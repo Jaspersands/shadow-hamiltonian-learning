@@ -29,6 +29,10 @@ class HamiltonianLearningResult:
     matched_observables: Dict[str, float]
     predicted_observables: Dict[str, float]
 
+    @property
+    def final_loss(self) -> float:
+        return self.loss_history[-1] if self.loss_history else 0.0
+
 
 class DifferentiableHamiltonianLearner:
     """
