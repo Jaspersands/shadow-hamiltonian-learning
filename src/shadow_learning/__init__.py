@@ -24,8 +24,12 @@ from .spam_mitigation import (
     SPAMNoiseMitigator,
     ReadoutErrorModel,
 )
+from .derandomized import DerandomizedShadowSelector
+from .kalman_tracker import StreamingKalmanHamiltonianTracker
+from .fermionic_shadows import FermionicMatchgateShadows
+from .process_tomography import ShadowProcessTomographer
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "ClassicalShadowsProtocol",
     "ShadowSnapshot",
@@ -38,4 +42,8 @@ __all__ = [
     "learn_hamiltonian_from_shadows",
     "SPAMNoiseMitigator",
     "ReadoutErrorModel",
+    "DerandomizedShadowSelector",
+    "StreamingKalmanHamiltonianTracker",
+    "FermionicMatchgateShadows",
+    "ShadowProcessTomographer",
 ]
