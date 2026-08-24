@@ -25,7 +25,12 @@ class ReadoutErrorModel:
         self.matrix = np.array(
             [[1.0 - p01, p10], [p01, 1.0 - p10]], dtype=np.float64
         )
-        self.inv_matrix = np.linalg.inv(self.matrix)
+        det = (1.0 - p01 - p10)
+        if abs(det) < 1e-4:
+            # Singular / completely uninformative measurement channel
+            self.inv_matrix = np.eye(2)
+        else:
+            self.inv_matrix = np.linalg.pinv(self.matrix)
 
     def apply_readout_noise(self, bit: int, rng: np.random.Generator) -> int:
         """Flips bit with asymmetric readout probability."""
