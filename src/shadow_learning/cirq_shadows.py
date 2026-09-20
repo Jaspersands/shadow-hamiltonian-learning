@@ -76,7 +76,7 @@ def sample_shadows_from_density_matrix(
     snapshots: List[ShadowSnapshot] = []
     cache = {}
     for s in range(int(n_snapshots)):
-        b = tuple(bases[s]) if bases is not None else tuple(choices[rng.integers(0, 3, size=n)])
+        b = tuple(str(x) for x in bases[s]) if bases is not None else tuple(str(x) for x in choices[rng.integers(0, 3, size=n)])
         if b not in cache:
             U = reduce(np.kron, [_ROT[x] for x in b])
             probs = np.real(np.einsum("ij,jk,ki->i", U, rho, U.conj().T))
