@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shadow-hamiltonian-learning"
-version = "0.2.0"
-description = "Shadow-Tomography-Guided Hamiltonian Learning with Differentiable Post-Processing in Cirq & PennyLane"
+version = "0.3.0"
+description = "Classical shadows: randomised, derandomised and matchgate shadows, readout mitigation, JAX-differentiable Hamiltonian learning, EKF tracking and shadow process tomography"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

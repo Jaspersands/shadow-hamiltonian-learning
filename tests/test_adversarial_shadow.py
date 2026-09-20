@@ -1,52 +1,76 @@
 """
-Adversarial and Stress Test Suite for shadow_learning.
+Adversarial / stress tests: degenerate inputs and invariants.
 """
 
-import pytest
 import numpy as np
-import cirq
-from shadow_learning.cirq_shadows import ShadowSnapshot, measure_random_pauli_shadows
-from shadow_learning.reconstruction import (
-    estimate_pauli_string_expectation,
-    estimate_pauli_expectation_median_of_means,
-)
+import pytest
+
+from shadow_learning.cirq_shadows import ShadowSnapshot, sample_shadows_from_density_matrix, gibbs_state
+from shadow_learning.reconstruction import estimate_pauli_string_expectation, estimate_pauli_expectation_median_of_means
 from shadow_learning.spam_mitigation import ReadoutErrorModel, SPAMNoiseMitigator
+from shadow_learning.derandomized import DerandomizedShadowSelector
+from shadow_learning.differentiable_inversion import DifferentiableHamiltonianLearner
+from shadow_learning.cli import main as cli_main
+from shadow_learning import __version__
 
 
-def test_adversarial_empty_and_minimal_snapshots():
-    """Verify safe handling of empty and single-snapshot lists."""
+def test_version():
+    assert __version__ == "0.3.0"
+
+
+def test_empty_and_minimal_snapshots():
     assert estimate_pauli_string_expectation([], "ZZ") == 0.0
-    
     snap = ShadowSnapshot(bases=("Z", "Z"), bits=(0, 0))
-    val = estimate_pauli_string_expectation([snap], "ZZ")
-    assert val == 9.0 # 3 * 3 * 1.0 = 9.0 (unbiased single-shot realization)
+    assert estimate_pauli_string_expectation([snap], "ZZ") == 9.0
+    assert estimate_pauli_string_expectation([snap], "ZZ", derandomized=True) == 1.0
 
 
-def test_adversarial_identity_pauli_string():
-    """Verify that identity operator 'II' always returns 1.0."""
-    snaps = [
-        ShadowSnapshot(bases=("X", "Y"), bits=(1, 0)),
-        ShadowSnapshot(bases=("Z", "X"), bits=(0, 1)),
-    ]
-    val = estimate_pauli_string_expectation(snaps, "II")
-    assert val == 1.0
+def test_identity_pauli_string_is_one():
+    snaps = [ShadowSnapshot(("X", "Y"), (1, 0)), ShadowSnapshot(("Z", "X"), (0, 1))]
+    assert estimate_pauli_string_expectation(snaps, "II") == 1.0
 
 
-def test_adversarial_median_of_means_edge_batches():
-    """Verify median of means when batch count > snapshot count."""
-    snaps = [
-        ShadowSnapshot(bases=("Z", "Z"), bits=(0, 0)),
-        ShadowSnapshot(bases=("Z", "Z"), bits=(0, 1)),
-    ]
-    # Request 10 batches for 2 snapshots -> should fallback gracefully
-    val = estimate_pauli_expectation_median_of_means(snaps, "ZZ", n_batches=10)
-    assert not np.isnan(val)
+def test_median_of_means_edge_batches():
+    snaps = [ShadowSnapshot(("Z", "Z"), (0, 0)), ShadowSnapshot(("Z", "Z"), (0, 1))]
+    assert not np.isnan(estimate_pauli_expectation_median_of_means(snaps, "ZZ", n_batches=10))
 
 
-def test_adversarial_spam_singular_readout_guardrail():
-    """Verify that extreme readout error (e.g. 50% random flip) does not explode to infinity."""
-    bad_readout = ReadoutErrorModel(p01=0.50, p10=0.50) # completely random measurement
-    mitigator = SPAMNoiseMitigator(bad_readout)
-    val = mitigator.mitigate_pauli_expectation(0.5, pauli_weight=2)
-    assert not np.isnan(val)
-    assert not np.isinf(val)
+def test_singular_readout_guardrail():
+    bad = ReadoutErrorModel(p01=0.5, p10=0.5)
+    assert bad.singular
+    assert np.isfinite(SPAMNoiseMitigator(bad).mitigate_pauli_expectation(0.5, 2))
+    assert np.isfinite(bad.corrected_eigenvalue(1))
+
+
+def test_derandomizer_rejects_bad_observables():
+    with pytest.raises(ValueError):
+        DerandomizedShadowSelector(["XZ"], n_qubits=3)
+    with pytest.raises(ValueError):
+        DerandomizedShadowSelector(["XQ"], n_qubits=2)
+
+
+def test_gibbs_sampler_handles_pure_and_mixed_extremes():
+    H = np.diag([0.0, 5.0, 5.0, 5.0]).astype(complex)
+    snaps = sample_shadows_from_density_matrix(gibbs_state(H, 100.0), 300, np.random.default_rng(0))
+    assert abs(estimate_pauli_string_expectation(snaps, "ZZ") - 1.0) < 0.3
+    snaps = sample_shadows_from_density_matrix(gibbs_state(H, 0.0), 300, np.random.default_rng(0))
+    assert abs(estimate_pauli_string_expectation(snaps, "ZZ")) < 0.5
+
+
+def test_learner_single_qubit_has_no_couplings():
+    learner = DifferentiableHamiltonianLearner(n_qubits=1, beta=1.0)
+    assert learner.n_params == 1 and learner.observable_names == ["Z_0"]
+    obs = learner.compute_thermal_observables(np.zeros((1, 1)), np.array([0.7]))
+    assert np.isclose(obs["Z_0"], -np.tanh(0.7))
+
+
+def test_cli_learn_and_qpt(capsys):
+    import json
+    assert cli_main(["learn", "--qubits", "2", "--shots", "600", "--beta", "0.6", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["method"] in ("jax-lbfgs", "numpy-lbfgs") and "recovered_J" in out
+    assert cli_main(["qpt", "--channel", "x", "--shots", "300", "--json"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["process_fidelity"] > 0.7
+    assert cli_main(["derand-compare", "--qubits", "2", "--shots", "100", "--trials", "2", "--json"]) == 0
+    assert "gain" in json.loads(capsys.readouterr().out)
