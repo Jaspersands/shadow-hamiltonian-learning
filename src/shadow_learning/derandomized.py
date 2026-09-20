@@ -1,58 +1,85 @@
 """
-Derandomized Classical Shadows (Huang, Kueng, Preskill 2021).
+Derandomised classical shadows (Huang, Kueng & Preskill, PRL 127, 030503, 2021).
 
-Implements deterministic greedy Pauli basis selection that explicitly minimizes
-the upper bound on observable measurement variance, reducing required shots by 3-5x.
+Instead of sampling Pauli bases at random, the bases of each shot are chosen
+greedily, qubit by qubit, to minimise the *expected* confidence bound
+
+    CONF_ε(P; O) = Σ_{o ∈ O} exp(−ε²/2 · h_o(P)),
+
+where h_o counts the shots whose bases are compatible with observable o
+(``o_i = I`` or ``o_i = P_i`` on every qubit of its support). With ν = 1 − e^{−ε²/2},
+the cost of assigning Pauli W to qubit k of shot m, given the earlier
+assignments, is
+
+    Σ_o exp(−ε²/2 · h_o) · [1 − ν · 1[o compatible so far] · 3^{−(w_o − assigned_o)}] · (1 − ν/3^{w_o})^{M−m−1},
+
+whose minimiser is taken (ties broken X, Y, Z). This is Algorithm 1 of the
+paper; the v0.2 implementation was a fixed per-qubit majority vote that
+returned the same basis for every shot.
 """
 
 from __future__ import annotations
+
+from typing import Dict, List, Sequence, Tuple
+
 import numpy as np
-from typing import List, Sequence, Tuple, Dict, Any
-from .cirq_shadows import ShadowSnapshot
+
+PAULIS = ("X", "Y", "Z")
+
+
+def hits_per_observable(bases: Sequence[Tuple[str, ...]], observables: Sequence[str]) -> Dict[str, int]:
+    """Number of shots whose bases are compatible with each observable."""
+    out = {}
+    for obs in observables:
+        out[obs] = sum(1 for b in bases if all(o == "I" or o == w for o, w in zip(obs, b)))
+    return out
 
 
 class DerandomizedShadowSelector:
     """
-    Greedy deterministic basis selection for a specific target set of Pauli observables.
+    Parameters
+    ----------
+    target_observables : Pauli strings (``"XZI"`` …) of equal length ``n_qubits``
+    n_qubits : register size
+    epsilon : accuracy parameter of the confidence bound (0.9 works well in practice)
     """
 
-    def __init__(self, target_observables: Sequence[str], n_qubits: int):
-        self.observables = list(target_observables)
-        self.n_qubits = n_qubits
-        self.parsed_observables = [list(obs) for obs in self.observables]
+    def __init__(self, target_observables: Sequence[str], n_qubits: int, epsilon: float = 0.9):
+        self.observables = [str(o).upper() for o in target_observables]
+        self.n_qubits = int(n_qubits)
+        for o in self.observables:
+            if len(o) != self.n_qubits or any(c not in "IXYZ" for c in o):
+                raise ValueError(f"observable {o!r} must be a length-{n_qubits} string over I, X, Y, Z")
+        self.epsilon = float(epsilon)
+        self.weights = np.array([sum(c != "I" for c in o) for o in self.observables], dtype=float)
 
     def select_measurement_bases(self, n_snapshots: int) -> List[Tuple[str, ...]]:
-        """
-        Greedily selects measurement basis configuration (W_1, ..., W_N) for each shot
-        to maximize coverage of non-commuting target Pauli observables.
-        """
-        all_bases = []
-        basis_choices = ["X", "Y", "Z"]
+        M = int(n_snapshots)
+        nu = 1.0 - np.exp(-self.epsilon**2 / 2.0)
+        obs = self.observables
+        hits = np.zeros(len(obs))
+        bases: List[Tuple[str, ...]] = []
+        for m in range(M):
+            assigned: List[str] = []
+            future = (1.0 - nu / 3.0 ** self.weights) ** (M - m - 1)
+            for k in range(self.n_qubits):
+                best_w, best_cost = "Z", np.inf
+                for W in PAULIS:
+                    trial = assigned + [W]
+                    cost = 0.0
+                    for j, o in enumerate(obs):
+                        compatible = all(o[q] == "I" or o[q] == trial[q] for q in range(k + 1))
+                        remaining = sum(1 for q in range(k + 1, self.n_qubits) if o[q] != "I")
+                        cost += np.exp(-self.epsilon**2 / 2.0 * hits[j]) * (1.0 - (nu * 3.0 ** (-remaining) if compatible else 0.0)) * future[j]
+                    if cost < best_cost - 1e-12:
+                        best_cost, best_w = cost, W
+                assigned.append(best_w)
+            shot = tuple(assigned)
+            bases.append(shot)
+            for j, o in enumerate(obs):
+                if all(o[q] == "I" or o[q] == shot[q] for q in range(self.n_qubits)):
+                    hits[j] += 1
+        return bases
 
-        for s in range(n_snapshots):
-            chosen_shot = []
-
-            for q in range(self.n_qubits):
-                # Score each candidate basis {X, Y, Z} on qubit q
-                best_basis = "Z"
-                best_score = -1.0
-
-                for candidate in basis_choices:
-                    # Count how many target observables are matched if candidate is chosen
-                    score = 0.0
-                    for obs in self.parsed_observables:
-                        target_p = obs[q]
-                        if target_p == "I" or target_p == candidate:
-                            score += 1.0
-                        else:
-                            score -= 0.5 # Penalty for mismatch
-
-                    if score > best_score:
-                        best_score = score
-                        best_basis = candidate
-
-                chosen_shot.append(best_basis)
-
-            all_bases.append(tuple(chosen_shot))
-
-        return all_bases
+    def coverage(self, bases: Sequence[Tuple[str, ...]]) -> Dict[str, int]:
+        return hits_per_observable(bases, self.observables)

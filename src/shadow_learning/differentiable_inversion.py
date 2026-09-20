@@ -1,26 +1,56 @@
 """
-Differentiable Hamiltonian Learning from Shadow Expectation Values.
+Differentiable Hamiltonian learning from shadow expectation values.
 
-Recovers coupling matrices J_ij and magnetic fields h_i by differentiating through
-thermal Gibbs states or time-evolution propagators to match shadow observables.
+Model: an isotropic Heisenberg Hamiltonian with local fields,
+
+    H(J, h) = Σ_{i<j} J_ij (X_iX_j + Y_iY_j + Z_iZ_j) + Σ_i h_i Z_i,
+
+whose Gibbs state ρ_β = e^{−βH}/Z produces expectation values of the Pauli
+observables {Z_i, X_iX_j, Y_iY_j, Z_iZ_j}. Given shadow estimates of those
+observables, (J, h) is recovered by minimising
+
+    L(J, h) = Σ_o (⟨o⟩_ρ(J,h) − ô)² + λ ‖(J, h)‖²
+
+with **analytic gradients through the eigendecomposition** (JAX ``eigh``) and
+L-BFGS-B. Without JAX the same loss is minimised with central-difference
+gradients. (v0.2 used derivative-free Nelder–Mead.)
 """
 
 from __future__ import annotations
-import numpy as np
-import scipy.linalg
-import scipy.optimize
-from dataclasses import dataclass
-from typing import List, Tuple, Dict, Sequence, Optional, Any
 
-from .cirq_shadows import ShadowSnapshot
-from .reconstruction import estimate_many_observables
+from dataclasses import dataclass, field
+from functools import reduce
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+import scipy.optimize
+
+from .cirq_shadows import ShadowSnapshot, gibbs_state
+from .reconstruction import estimate_pauli_string_expectation
+
+try:
+    import jax
+    import jax.numpy as jnp
+
+    jax.config.update("jax_enable_x64", True)
+    HAS_JAX = True
+except ImportError:  # pragma: no cover
+    HAS_JAX = False
+    jax = None
+    jnp = np
+
+_P = {
+    "I": np.eye(2, dtype=np.complex128),
+    "X": np.array([[0, 1], [1, 0]], dtype=np.complex128),
+    "Y": np.array([[0, -1j], [1j, 0]], dtype=np.complex128),
+    "Z": np.array([[1, 0], [0, -1]], dtype=np.complex128),
+}
 
 
 @dataclass
 class HamiltonianLearningResult:
-    """Stores the reconstructed Hamiltonian parameters and optimization convergence."""
-    recovered_j_matrix: np.ndarray # Shape (N, N)
-    recovered_h_vector: np.ndarray # Shape (N,)
+    recovered_j_matrix: np.ndarray
+    recovered_h_vector: np.ndarray
     true_j_matrix: Optional[np.ndarray]
     true_h_vector: Optional[np.ndarray]
     frobenius_error: float
@@ -28,6 +58,8 @@ class HamiltonianLearningResult:
     iterations: int
     matched_observables: Dict[str, float]
     predicted_observables: Dict[str, float]
+    method: str = "jax-lbfgs"
+    h_error: float = 0.0
 
     @property
     def final_loss(self) -> float:
@@ -36,184 +68,189 @@ class HamiltonianLearningResult:
 
 class DifferentiableHamiltonianLearner:
     """
-    Inverts classical shadow snapshot data to discover unknown Hamiltonian couplings.
+    Parameters
+    ----------
+    n_qubits : register size
+    beta : inverse temperature of the Gibbs state
+    l2_reg : ridge penalty λ on the parameter vector
+    seed : initial-guess RNG seed
     """
 
-    def __init__(
-        self,
-        n_qubits: int,
-        beta: float = 1.0, # Inverse temperature beta = 1 / (k_B * T)
-        l1_reg: float = 1e-4,
-    ):
-        self.n_qubits = n_qubits
-        self.beta = beta
-        self.l1_reg = l1_reg
-        self.pauli_basis_matrices = self._build_pauli_matrices()
+    def __init__(self, n_qubits: int, beta: float = 1.0, l2_reg: float = 1e-8, seed: int = 0, l1_reg: Optional[float] = None):
+        self.n_qubits = int(n_qubits)
+        self.beta = float(beta)
+        self.l2_reg = float(l1_reg if l1_reg is not None else l2_reg)
+        self.rng = np.random.default_rng(seed)
+        self.pairs = [(i, j) for i in range(self.n_qubits) for j in range(i + 1, self.n_qubits)]
+        self.n_params = len(self.pairs) + self.n_qubits
+        self.observable_names: List[str] = [f"Z_{i}" for i in range(self.n_qubits)]
+        for i, j in self.pairs:
+            self.observable_names += [f"XX_{i}_{j}", f"YY_{i}_{j}", f"ZZ_{i}_{j}"]
+        self._obs_mats = np.stack([self.pauli_matrix(self.pauli_string(n)) for n in self.observable_names])
+        self._coupling_mats = np.stack([sum(self.pauli_matrix(self._pair_string(i, j, p)) for p in "XYZ") for i, j in self.pairs]) if self.pairs else np.zeros((0, 2**self.n_qubits, 2**self.n_qubits), dtype=complex)
+        self._field_mats = np.stack([self.pauli_matrix(self.pauli_string(f"Z_{i}")) for i in range(self.n_qubits)])
+        self.pauli_basis_matrices = {n: self._obs_mats[k] for k, n in enumerate(self.observable_names)}  # v0.2 name
+        self._jax_value_and_grad = self._build_jax() if HAS_JAX else None
 
-    def _build_pauli_matrices(self) -> Dict[str, np.ndarray]:
-        sx = np.array([[0, 1], [1, 0]], dtype=np.complex128)
-        sy = np.array([[0, -1j], [1j, 0]], dtype=np.complex128)
-        sz = np.array([[1, 0], [0, -1]], dtype=np.complex128)
-        id2 = np.eye(2, dtype=np.complex128)
+    # ----------------------------------------------------------------- #
+    # naming / matrices
+    # ----------------------------------------------------------------- #
+    def _pair_string(self, i: int, j: int, p: str) -> str:
+        s = ["I"] * self.n_qubits
+        s[i] = p; s[j] = p
+        return "".join(s)
 
-        ops = {}
-        # 1-qubit Z observables
-        for i in range(self.n_qubits):
-            m = [sz if k == i else id2 for k in range(self.n_qubits)]
-            curr = m[0]
-            for k in range(1, self.n_qubits):
-                curr = np.kron(curr, m[k])
-            ops[f"Z_{i}"] = curr
+    def pauli_string(self, name: str) -> str:
+        if name.startswith("Z_"):
+            i = int(name.split("_")[1])
+            s = ["I"] * self.n_qubits; s[i] = "Z"
+            return "".join(s)
+        p, i, j = name.split("_")
+        return self._pair_string(int(i), int(j), p[0])
 
-        # 2-qubit nearest-neighbor and all-to-all observables
-        for i in range(self.n_qubits):
-            for j in range(i + 1, self.n_qubits):
-                for p_name, p_mat in [("X", sx), ("Y", sy), ("Z", sz)]:
-                    m = [p_mat if k in [i, j] else id2 for k in range(self.n_qubits)]
-                    curr = m[0]
-                    for k in range(1, self.n_qubits):
-                        curr = np.kron(curr, m[k])
-                    ops[f"{p_name}{p_name}_{i}_{j}"] = curr
+    def pauli_matrix(self, pauli_string: str) -> np.ndarray:
+        return reduce(np.kron, [_P[c] for c in pauli_string])
 
-        return ops
+    def pack(self, j_matrix: np.ndarray, h_vec: np.ndarray) -> np.ndarray:
+        return np.concatenate([[float(j_matrix[i, j]) for i, j in self.pairs], np.asarray(h_vec, dtype=float)])
+
+    def unpack(self, p: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        J = np.zeros((self.n_qubits, self.n_qubits))
+        for k, (i, j) in enumerate(self.pairs):
+            J[i, j] = J[j, i] = p[k]
+        return J, np.asarray(p[len(self.pairs):], dtype=float)
 
     def build_hamiltonian_matrix(self, j_matrix: np.ndarray, h_vec: np.ndarray) -> np.ndarray:
-        """Constructs 2^N x 2^N Hamiltonian from parameter matrices."""
-        dim = 2**self.n_qubits
-        H = np.zeros((dim, dim), dtype=np.complex128)
-
-        # External fields h_i Z_i
+        p = self.pack(j_matrix, h_vec)
+        H = np.zeros((2**self.n_qubits, 2**self.n_qubits), dtype=np.complex128)
+        for k in range(len(self.pairs)):
+            H += p[k] * self._coupling_mats[k]
         for i in range(self.n_qubits):
-            H += h_vec[i] * self.pauli_basis_matrices[f"Z_{i}"]
-
-        # Couplings J_ij (XX + YY + ZZ)
-        for i in range(self.n_qubits):
-            for j in range(i + 1, self.n_qubits):
-                j_val = j_matrix[i, j]
-                if abs(j_val) > 1e-8:
-                    H += j_val * (
-                        self.pauli_basis_matrices[f"XX_{i}_{j}"]
-                        + self.pauli_basis_matrices[f"YY_{i}_{j}"]
-                        + self.pauli_basis_matrices[f"ZZ_{i}_{j}"]
-                    )
-
+            H += p[len(self.pairs) + i] * self._field_mats[i]
         return H
 
-    def compute_thermal_observables(
-        self, j_matrix: np.ndarray, h_vec: np.ndarray
-    ) -> Dict[str, float]:
-        """Calculates exact Gibbs state expectation values Tr(O exp(-beta H)) / Z."""
-        H = self.build_hamiltonian_matrix(j_matrix, h_vec)
-        evals, evecs = np.linalg.eigh(H)
+    # ----------------------------------------------------------------- #
+    # forward model
+    # ----------------------------------------------------------------- #
+    def gibbs_observables(self, p: np.ndarray) -> np.ndarray:
+        J, h = self.unpack(p)
+        rho = gibbs_state(self.build_hamiltonian_matrix(J, h), self.beta)
+        return np.real(np.einsum("kij,ji->k", self._obs_mats, rho))
 
-        # Thermal weights
-        exp_weights = np.exp(-self.beta * (evals - np.min(evals)))
-        z = np.sum(exp_weights)
-        probs = exp_weights / z
+    def jacobian(self, p: np.ndarray, eps: float = 1e-5) -> np.ndarray:
+        """∂⟨o_k⟩/∂p_l of the Gibbs observables (central differences)."""
+        p = np.asarray(p, dtype=float)
+        J = np.zeros((len(self.observable_names), len(p)))
+        for l in range(len(p)):
+            pp = p.copy(); pp[l] += eps
+            pm = p.copy(); pm[l] -= eps
+            J[:, l] = (self.gibbs_observables(pp) - self.gibbs_observables(pm)) / (2 * eps)
+        return J
 
-        # Density matrix rho = sum_k p_k |v_k><v_k|
-        rho = (evecs * probs) @ evecs.conj().T
+    def identifiability(self, j_matrix: np.ndarray, h_vec: np.ndarray) -> Dict[str, np.ndarray]:
+        """
+        Singular-value analysis of the observable Jacobian at (J, h): which
+        parameter directions the chosen observables can resolve. Small singular
+        values mark (nearly) unlearnable combinations — e.g. a uniform field on a
+        singlet-dominated Gibbs state, which the total-spin-zero state screens.
+        """
+        Jac = self.jacobian(self.pack(j_matrix, h_vec))
+        u, sv, vt = np.linalg.svd(Jac, full_matrices=False)
+        return {"singular_values": sv, "directions": vt, "least_identifiable": vt[-1], "condition_number": float(sv[0] / max(sv[-1], 1e-300))}
 
-        preds = {}
-        for name, op in self.pauli_basis_matrices.items():
-            preds[name] = float(np.real(np.trace(op @ rho)))
+    def compute_thermal_observables(self, j_matrix: np.ndarray, h_vec: np.ndarray) -> Dict[str, float]:
+        vals = self.gibbs_observables(self.pack(j_matrix, h_vec))
+        return {n: float(v) for n, v in zip(self.observable_names, vals)}
 
-        return preds
+    def _build_jax(self):
+        coup = jnp.asarray(self._coupling_mats)
+        fields = jnp.asarray(self._field_mats)
+        obs = jnp.asarray(self._obs_mats)
+        beta, n_pairs, lam = self.beta, len(self.pairs), self.l2_reg
+
+        def loss(p, targets):
+            H = jnp.tensordot(p[:n_pairs], coup, axes=(0, 0)) + jnp.tensordot(p[n_pairs:], fields, axes=(0, 0))
+            w, v = jnp.linalg.eigh(H)
+            weights = jnp.exp(-beta * (w - jnp.min(w)))
+            weights = weights / jnp.sum(weights)
+            rho = (v * weights) @ jnp.conj(v).T
+            preds = jnp.real(jnp.einsum("kij,ji->k", obs, rho))
+            return jnp.sum((preds - targets) ** 2) + lam * jnp.sum(p**2)
+
+        return jax.jit(jax.value_and_grad(loss))
+
+    def loss_and_grad(self, p: np.ndarray, targets) -> Tuple[float, np.ndarray]:
+        t = np.asarray([targets[n] for n in self.observable_names], dtype=float) if isinstance(targets, dict) else np.asarray(targets, dtype=float)
+        p = np.asarray(p, dtype=float)
+        if HAS_JAX and self._jax_value_and_grad is not None:
+            v, g = self._jax_value_and_grad(jnp.asarray(p), jnp.asarray(t))
+            return float(v), np.asarray(g, dtype=float)
+
+        def f(q):
+            return float(np.sum((self.gibbs_observables(q) - t) ** 2) + self.l2_reg * np.sum(q**2))
+
+        base = f(p)
+        g = np.zeros_like(p)
+        for i in range(len(p)):
+            pp = p.copy(); pp[i] += 1e-6
+            pm = p.copy(); pm[i] -= 1e-6
+            g[i] = (f(pp) - f(pm)) / 2e-6
+        return base, g
+
+    # ----------------------------------------------------------------- #
+    # learning
+    # ----------------------------------------------------------------- #
+    def learn_from_expectations(
+        self,
+        targets: Dict[str, float],
+        true_j_matrix: Optional[np.ndarray] = None,
+        true_h_vector: Optional[np.ndarray] = None,
+        max_iter: int = 300,
+        n_restarts: int = 3,
+    ) -> HamiltonianLearningResult:
+        """Recover (J, h) from a dict of observable expectation values."""
+        t = np.asarray([targets[n] for n in self.observable_names], dtype=float)
+        best = None
+        for r in range(int(n_restarts)):
+            p0 = self.rng.uniform(-0.5, 0.5, size=self.n_params) if r > 0 else np.zeros(self.n_params) + 0.05
+            hist: List[float] = []
+
+            def objective(p):
+                v, g = self.loss_and_grad(p, t)
+                hist.append(v)
+                return v, g
+
+            res = scipy.optimize.minimize(objective, p0, method="L-BFGS-B", jac=True,
+                                          options={"maxiter": int(max_iter), "ftol": 1e-15, "gtol": 1e-12})
+            if best is None or res.fun < best[0].fun:
+                best = (res, hist)
+            if res.fun < 1e-12:
+                break
+        res, hist = best
+        J, h = self.unpack(res.x)
+        preds = self.compute_thermal_observables(J, h)
+        return HamiltonianLearningResult(
+            recovered_j_matrix=J, recovered_h_vector=h, true_j_matrix=true_j_matrix, true_h_vector=true_h_vector,
+            frobenius_error=float(np.linalg.norm(J - true_j_matrix)) if true_j_matrix is not None else 0.0,
+            h_error=float(np.linalg.norm(h - true_h_vector)) if true_h_vector is not None else 0.0,
+            loss_history=hist, iterations=len(hist), matched_observables=dict(zip(self.observable_names, t.tolist())),
+            predicted_observables=preds, method="jax-lbfgs" if (HAS_JAX and self._jax_value_and_grad is not None) else "numpy-lbfgs",
+        )
 
     def learn_from_shadows(
         self,
         snapshots: Sequence[ShadowSnapshot],
         true_j_matrix: Optional[np.ndarray] = None,
         true_h_vector: Optional[np.ndarray] = None,
-        max_iter: int = 100,
+        max_iter: int = 300,
+        derandomized: bool = False,
+        readout_model=None,
     ) -> HamiltonianLearningResult:
-        """
-        Executes differentiable gradient descent to recover J_ij and h_i from shadow snapshots.
-        """
-        # 1. Estimate shadow expectation values
-        shadow_targets = {}
-        obs_names = list(self.pauli_basis_matrices.keys())
-
-        # Translate observable names into Pauli string format
-        for name in obs_names:
-            p_str = ["I"] * self.n_qubits
-            if name.startswith("Z_"):
-                i = int(name.split("_")[1])
-                p_str[i] = "Z"
-            elif name.startswith("XX_"):
-                _, i, j = name.split("_")
-                p_str[int(i)] = "X"
-                p_str[int(j)] = "X"
-            elif name.startswith("YY_"):
-                _, i, j = name.split("_")
-                p_str[int(i)] = "Y"
-                p_str[int(j)] = "Y"
-            elif name.startswith("ZZ_"):
-                _, i, j = name.split("_")
-                p_str[int(i)] = "Z"
-                p_str[int(j)] = "Z"
-
-            p_string = "".join(p_str)
-            from .reconstruction import estimate_pauli_string_expectation
-            shadow_targets[name] = estimate_pauli_string_expectation(snapshots, p_string)
-
-        # 2. Setup optimization vector: [J_{01}, J_{02}, ..., J_{(N-1)N}, h_0, ..., h_{N-1}]
-        n_couplings = (self.n_qubits * (self.n_qubits - 1)) // 2
-        n_params = n_couplings + self.n_qubits
-
-        def unpack_params(p_vec: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-            j_mat = np.zeros((self.n_qubits, self.n_qubits))
-            idx = 0
-            for i in range(self.n_qubits):
-                for j in range(i + 1, self.n_qubits):
-                    j_mat[i, j] = p_vec[idx]
-                    j_mat[j, i] = p_vec[idx]
-                    idx += 1
-            h_v = p_vec[n_couplings:]
-            return j_mat, h_v
-
-        loss_history = []
-
-        def loss_fn(p_vec: np.ndarray) -> float:
-            j_mat, h_v = unpack_params(p_vec)
-            preds = self.compute_thermal_observables(j_mat, h_v)
-
-            mse = 0.0
-            for name, target_val in shadow_targets.items():
-                mse += (preds[name] - target_val) ** 2
-
-            l1 = self.l1_reg * float(np.sum(np.abs(p_vec)))
-            total = mse + l1
-            loss_history.append(total)
-            return total
-
-        # Run L-BFGS-B / Powell
-        p0 = np.random.uniform(0.1, 0.5, size=n_params)
-        res = scipy.optimize.minimize(
-            loss_fn,
-            p0,
-            method="Nelder-Mead",
-            options={"maxiter": max_iter, "xatol": 1e-4, "fatol": 1e-4},
-        )
-
-        rec_j, rec_h = unpack_params(res.x)
-        final_preds = self.compute_thermal_observables(rec_j, rec_h)
-
-        frob_err = 0.0
-        if true_j_matrix is not None:
-            frob_err = float(np.linalg.norm(rec_j - true_j_matrix))
-
-        return HamiltonianLearningResult(
-            recovered_j_matrix=rec_j,
-            recovered_h_vector=rec_h,
-            true_j_matrix=true_j_matrix,
-            true_h_vector=true_h_vector,
-            frobenius_error=frob_err,
-            loss_history=loss_history,
-            iterations=len(loss_history),
-            matched_observables=shadow_targets,
-            predicted_observables=final_preds,
-        )
+        """Estimate the model observables from shadows, then invert."""
+        targets = {n: estimate_pauli_string_expectation(snapshots, self.pauli_string(n), derandomized=derandomized, readout_model=readout_model)
+                   for n in self.observable_names}
+        targets = {n: float(np.clip(v, -1.0, 1.0)) for n, v in targets.items()}
+        return self.learn_from_expectations(targets, true_j_matrix, true_h_vector, max_iter=max_iter)
 
 
 def learn_hamiltonian_from_shadows(
@@ -222,10 +259,11 @@ def learn_hamiltonian_from_shadows(
     true_j_matrix: Optional[np.ndarray] = None,
     true_h_vector: Optional[np.ndarray] = None,
     beta: float = 1.0,
-    max_iter: int = 100,
+    max_iter: int = 300,
+    seed: int = 0,
+    derandomized: bool = False,
+    readout_model=None,
 ) -> HamiltonianLearningResult:
-    """Convenience helper to run Hamiltonian recovery from shadow snapshots."""
-    learner = DifferentiableHamiltonianLearner(n_qubits=n_qubits, beta=beta)
-    return learner.learn_from_shadows(
-        snapshots, true_j_matrix=true_j_matrix, true_h_vector=true_h_vector, max_iter=max_iter
-    )
+    learner = DifferentiableHamiltonianLearner(n_qubits=n_qubits, beta=beta, seed=seed)
+    return learner.learn_from_shadows(snapshots, true_j_matrix, true_h_vector, max_iter=max_iter,
+                                      derandomized=derandomized, readout_model=readout_model)

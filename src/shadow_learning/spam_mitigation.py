@@ -1,65 +1,72 @@
 """
-SPAM (State Preparation and Measurement) Error Mitigation for Classical Shadows.
+Readout (measurement) error mitigation for Pauli shadows.
 
-Implements inverted measurement confusion matrix calibration to de-bias
-noisy shadow snapshots under asymmetric readout errors.
+A single-qubit confusion matrix M[measured, true] with
+p(1|0) = p01 and p(0|1) = p10 maps the true outcome distribution to the
+measured one. Because each Pauli estimator is a product of single-qubit
+eigenvalues (−1)^{b}, exact de-biasing only requires replacing (−1)^{b} by
+
+    g = (Mᵀ)⁻¹ · (+1, −1),
+
+i.e. g(b') = Σ_b (M⁻¹)[b, b'] (−1)^b, which satisfies E[g(b')] = (−1)^b for every
+true bit b — including *asymmetric* errors. The multiplicative rule
+⟨P⟩/(1 − p01 − p10)^k used in v0.2 is exact only for symmetric errors
+(p01 = p10) and is retained for that case.
 """
 
 from __future__ import annotations
+
+from typing import Optional, Sequence
+
 import numpy as np
-from typing import Sequence, List, Tuple, Dict, Any, Optional
-from .cirq_shadows import ShadowSnapshot
 
 
 class ReadoutErrorModel:
-    """
-    Asymmetric single-qubit readout error model:
-        p(0|1) = eps_10 (state |1> misread as 0)
-        p(1|0) = eps_01 (state |0> misread as 1)
-    """
+    """Asymmetric single-qubit readout errors p01 = p(1|0), p10 = p(0|1)."""
 
     def __init__(self, p01: float = 0.03, p10: float = 0.05):
-        self.p01 = p01
-        self.p10 = p10
-        # Confusion matrix M[measured, true]
-        self.matrix = np.array(
-            [[1.0 - p01, p10], [p01, 1.0 - p10]], dtype=np.float64
-        )
-        det = (1.0 - p01 - p10)
-        if abs(det) < 1e-4:
-            # Singular / completely uninformative measurement channel
-            self.inv_matrix = np.eye(2)
-        else:
-            self.inv_matrix = np.linalg.pinv(self.matrix)
+        self.p01 = float(p01)
+        self.p10 = float(p10)
+        # M[measured, true]
+        self.matrix = np.array([[1.0 - self.p01, self.p10], [self.p01, 1.0 - self.p10]], dtype=float)
+        det = 1.0 - self.p01 - self.p10
+        self.singular = abs(det) < 1e-4
+        self.inv_matrix = np.eye(2) if self.singular else np.linalg.inv(self.matrix)
+        # corrected eigenvalues g(b') = Σ_b inv[b, b'] (−1)^b
+        self._g = (self.inv_matrix.T @ np.array([1.0, -1.0])) if not self.singular else np.array([1.0, -1.0])
+
+    @property
+    def readout_fidelity(self) -> float:
+        return 1.0 - self.p01 - self.p10
+
+    def corrected_eigenvalue(self, measured_bit: int) -> float:
+        """Unbiased estimator of (−1)^{true bit} given the measured bit."""
+        return float(self._g[int(measured_bit)])
 
     def apply_readout_noise(self, bit: int, rng: np.random.Generator) -> int:
-        """Flips bit with asymmetric readout probability."""
         if bit == 0:
             return 1 if rng.random() < self.p01 else 0
-        else:
-            return 0 if rng.random() < self.p10 else 1
+        return 0 if rng.random() < self.p10 else 1
 
 
 class SPAMNoiseMitigator:
-    """
-    Mitigates measurement assignment errors on shadow snapshots.
-    """
+    """Applies :class:`ReadoutErrorModel` corrections to shadow estimates."""
 
     def __init__(self, readout_model: Optional[ReadoutErrorModel] = None):
         self.model = readout_model or ReadoutErrorModel()
 
-    def mitigate_pauli_expectation(
-        self,
-        raw_expectation: float,
-        pauli_weight: int, # Number of non-identity Paulis in string
-    ) -> float:
-        """
-        Scales the raw shadow expectation by the inverse trace error factor:
-            <P>_{mitigated} = <P>_{raw} / (1 - p01 - p10)^k
-        """
-        readout_fidelity = 1.0 - self.model.p01 - self.model.p10
-        if readout_fidelity <= 0.01:
-            return raw_expectation
+    def estimate(self, snapshots: Sequence, pauli_string: str, derandomized: bool = False) -> float:
+        """Exact (asymmetric-safe) mitigated estimate of ⟨P⟩ at the single-shot level."""
+        from .reconstruction import estimate_pauli_string_expectation
 
-        scale_factor = 1.0 / (readout_fidelity ** pauli_weight)
-        return float(raw_expectation * scale_factor)
+        return estimate_pauli_string_expectation(snapshots, pauli_string, derandomized=derandomized, readout_model=self.model)
+
+    def mitigate_pauli_expectation(self, raw_expectation: float, pauli_weight: int) -> float:
+        """
+        Multiplicative correction ⟨P⟩ / (1 − p01 − p10)^k — exact for symmetric
+        readout errors; for asymmetric errors use :meth:`estimate`.
+        """
+        f = self.model.readout_fidelity
+        if f <= 0.01:
+            return float(raw_expectation)
+        return float(raw_expectation / f**pauli_weight)
