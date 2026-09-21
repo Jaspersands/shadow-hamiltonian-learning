@@ -61,7 +61,11 @@ class DerandomizedShadowSelector:
         bases: List[Tuple[str, ...]] = []
         for m in range(M):
             assigned: List[str] = []
-            future = (1.0 - nu / 3.0 ** self.weights) ** (M - m - 1)
+            # (1 − ν/3^w)^(M−m−1) can be ~1e-50 for large M; work with log-weights and
+            # rescale so that comparisons between candidates are numerically meaningful.
+            log_future = (M - m - 1) * np.log1p(-nu / 3.0 ** self.weights)
+            log_weight = -self.epsilon**2 / 2.0 * hits + log_future
+            weight = np.exp(log_weight - log_weight.max())
             for k in range(self.n_qubits):
                 best_w, best_cost = "Z", np.inf
                 for W in PAULIS:
@@ -70,8 +74,8 @@ class DerandomizedShadowSelector:
                     for j, o in enumerate(obs):
                         compatible = all(o[q] == "I" or o[q] == trial[q] for q in range(k + 1))
                         remaining = sum(1 for q in range(k + 1, self.n_qubits) if o[q] != "I")
-                        cost += np.exp(-self.epsilon**2 / 2.0 * hits[j]) * (1.0 - (nu * 3.0 ** (-remaining) if compatible else 0.0)) * future[j]
-                    if cost < best_cost - 1e-12:
+                        cost += weight[j] * (1.0 - (nu * 3.0 ** (-remaining) if compatible else 0.0))
+                    if cost < best_cost * (1.0 - 1e-9):
                         best_cost, best_w = cost, W
                 assigned.append(best_w)
             shot = tuple(assigned)

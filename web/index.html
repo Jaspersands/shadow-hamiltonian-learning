@@ -1,303 +1,689 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shadow Tomography | Differentiable Hamiltonian Learning</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&family=JetBrains+Mono:wght@300;400;600;800&display=swap');
-    :root {
-      --crimson: #f43f5e;
-      --crimson-glow: rgba(244, 63, 94, 0.3);
-      --rose: #fda4af;
-      --bg: #09090b;
-      --surface: #121118;
-      --border: #27202b;
-    }
-    body {
-      font-family: 'Space Grotesk', sans-serif;
-      background-color: var(--bg);
-      color: #f4f4f5;
-    }
-    .font-mono { font-family: 'JetBrains Mono', monospace; }
-    .shadow-card {
-      background: rgba(18, 17, 24, 0.85);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(244, 63, 94, 0.18);
-    }
-    .heatmap-cell {
-      transition: background-color 0.2s ease, transform 0.2s ease;
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shadow Learning Observatory</title>
+<meta name="description" content="Classical shadows in your browser: Gibbs states, random and derandomised Pauli shadows with readout error, exact SPAM inversion, differentiable Hamiltonian learning and EKF tracking — every number computed on the page." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+/* ---------------------------------------------------------------------------
+   qvibes design system — shared by all four project demos and the hub.
+   Tokens live on :root; each page overrides --accent / --accent-2 / --accent-rgb.
+   --------------------------------------------------------------------------- */
+:root {
+  --bg: #070a12;
+  --bg-2: #0b101c;
+  --surface: #0f1522;
+  --surface-2: #151d2e;
+  --surface-3: #1b2538;
+  --border: #202b42;
+  --border-2: #2a3752;
+  --text: #e8eef8;
+  --text-2: #c2cde0;
+  --muted: #8592ad;
+  --muted-2: #5d6a86;
+  --accent: #22d3ee;
+  --accent-2: #60a5fa;
+  --accent-rgb: 34, 211, 238;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #fb7185;
+  --violet: #a78bfa;
+  --rose: #fb7185;
+  --emerald: #34d399;
+  --amber: #fbbf24;
+  --sky: #38bdf8;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 12px 40px -18px rgba(0, 0, 0, 0.7);
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(var(--accent-rgb), 0.10), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(96, 165, 250, 0.07), transparent 60%),
+    var(--bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
+p { margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+::selection { background: rgba(var(--accent-rgb), 0.35); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* Layout ------------------------------------------------------------------ */
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+.site-header {
+  position: sticky; top: 0; z-index: 40;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  background: rgba(7, 10, 18, 0.72);
+  border-bottom: 1px solid var(--border);
+}
+.site-header .wrap { display: flex; align-items: center; gap: 14px; min-height: 60px; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; }
+.brand > div { min-width: 0; }
+@media (max-width: 560px) { .brand-sub { display: none; } .brand-title { font-size: 14.5px; } }
+.brand-mark {
+  width: 36px; height: 36px; border-radius: 10px; flex: none;
+  display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px;
+  color: #06070d;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), 0.6);
+}
+.brand-title { font-weight: 700; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-sub { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
+.hero { padding: 28px 0 8px; }
+.hero h1 { font-size: clamp(22px, 3.2vw, 32px); font-weight: 800; letter-spacing: -0.02em; }
+.hero p { color: var(--text-2); max-width: 820px; margin-top: 8px; font-size: 15px; }
+.hero-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+
+.layout { display: grid; grid-template-columns: 1fr; gap: 18px; padding: 18px 0 40px; }
+@media (min-width: 1024px) {
+  .layout { grid-template-columns: 350px minmax(0, 1fr); align-items: start; }
+  .sidebar { position: sticky; top: 76px; }
+}
+.stack { display: grid; gap: 16px; min-width: 0; }
+.layout > *, .stack > *, .grid-2 > *, .stats > * { min-width: 0; }
+.grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 720px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 720px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Panels ------------------------------------------------------------------ */
+.panel {
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0)) , var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.panel-title { font-size: 13.5px; font-weight: 700; letter-spacing: 0.01em; }
+.panel-kicker {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 10px;
+}
+.panel-note { font-size: 12.5px; color: var(--muted); }
+.stat { padding: 14px 16px; border-left: 3px solid var(--accent); }
+.stat-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.stat-value { font-family: var(--font-mono); font-weight: 700; font-size: clamp(17px, 1.8vw, 22px); margin-top: 4px; color: var(--text); overflow-wrap: anywhere; }
+.stat-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.stat.violet { border-color: var(--violet); } .stat.rose { border-color: var(--rose); }
+.stat.emerald { border-color: var(--emerald); } .stat.amber { border-color: var(--amber); } .stat.sky { border-color: var(--sky); }
+.chart { position: relative; width: 100%; }
+.chart.h-64 { height: 260px; } .chart.h-56 { height: 220px; } .chart.h-48 { height: 190px; }
+
+/* Controls ---------------------------------------------------------------- */
+.field { display: grid; gap: 6px; margin-bottom: 12px; }
+.field-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text-2); }
+.field-row .val { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
+.select, .input {
+  width: 100%; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-size: 13.5px; color: var(--text); outline: none;
+}
+.select:focus, .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18); }
+.range { -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; margin: 0; }
+.range:focus { outline: none; }
+.range::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: var(--border-2); }
+.range::-moz-range-track { height: 4px; border-radius: 4px; background: var(--border-2); }
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--bg); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.45);
+  cursor: pointer; transition: transform 120ms ease;
+}
+.range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); cursor: pointer; }
+.range:active::-webkit-slider-thumb { transform: scale(1.15); }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); margin-bottom: 10px; cursor: pointer; }
+.toggle .t-title { font-weight: 600; font-size: 13px; }
+.toggle .t-sub { font-size: 11.5px; color: var(--muted); }
+.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch .knob { position: absolute; inset: 0; border-radius: 22px; background: var(--border-2); transition: background 150ms ease; }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 150ms ease; }
+.switch input:checked + .knob { background: var(--accent); }
+.switch input:checked + .knob::after { transform: translateX(16px); }
+.switch input:focus-visible + .knob { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-2);
+  background: var(--surface-2); color: var(--text); font-weight: 600; font-size: 13.5px; cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease, opacity 150ms ease;
+  text-decoration: none; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-3); border-color: var(--muted-2); text-decoration: none; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.55; cursor: progress; }
+.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #06070d; border-color: transparent; box-shadow: 0 8px 24px -10px rgba(var(--accent-rgb), 0.7); }
+.btn-primary:hover { filter: brightness(1.07); background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.btn-block { width: 100%; }
+.btn-sm { padding: 6px 10px; font-size: 12.5px; }
+.btn-ghost { background: transparent; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius-sm); overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.seg button.active { background: rgba(var(--accent-rgb), 0.18); color: var(--accent); }
+
+/* Chips & badges ---------------------------------------------------------- */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em;
+  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2);
+}
+.chip.accent { color: var(--accent); border-color: rgba(var(--accent-rgb), 0.4); background: rgba(var(--accent-rgb), 0.10); }
+.chip.ok { color: var(--ok); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.10); }
+.chip.warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.10); }
+.chip.bad { color: var(--bad); border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.10); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Misc -------------------------------------------------------------------- */
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 12.5px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--font-mono); color: var(--text); text-align: right; }
+.divider { height: 1px; background: var(--border); margin: 14px 0; }
+details.how { border: 1px dashed var(--border-2); border-radius: var(--radius); padding: 12px 16px; color: var(--text-2); font-size: 13.5px; }
+details.how summary { cursor: pointer; font-weight: 700; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; }
+details.how summary::-webkit-details-marker { display: none; }
+details.how summary::before { content: "▸"; color: var(--accent); transition: transform 150ms ease; }
+details.how[open] summary::before { transform: rotate(90deg); }
+details.how ul { margin: 8px 0 0; padding-left: 18px; }
+details.how li { margin: 4px 0; }
+.log {
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.55; color: var(--text-2);
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px;
+  max-height: 180px; overflow: auto; white-space: pre-wrap;
+}
+.gate-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 8px 2px; }
+.gate { flex: none; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--surface-2); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+.gate.accent { border-color: rgba(var(--accent-rgb), 0.5); background: rgba(var(--accent-rgb), 0.12); color: var(--accent); font-weight: 600; }
+.gate.wire { border: 0; background: transparent; color: var(--muted-2); padding: 0 2px; }
+.matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.matrix .cell { background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 2px; text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.matrix .cell.dim { color: var(--muted-2); }
+.heat { display: grid; gap: 4px; }
+.heat .cell { aspect-ratio: 1.6; display: grid; place-items: center; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; border: 1px solid var(--border); }
+.site-footer { border-top: 1px solid var(--border); padding: 22px 0 32px; color: var(--muted); font-size: 12.5px; }
+.site-footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; justify-content: space-between; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.progress { height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 8px; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width 120ms linear; }
+
+:root { --accent: #fb7185; --accent-2: #f9a8d4; --accent-rgb: 251, 113, 133; }
+.stream { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 11.5px; }
+.stream .row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--border); }
+.stream .b { color: var(--accent); } .stream .k { color: var(--ok); }
+.heat-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.heat-title { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; text-align: center; }
+</style>
 </head>
-<body class="min-h-screen flex flex-col antialiased selection:bg-rose-500 selection:text-black">
-  <!-- Top Navigation -->
-  <header class="border-b border-rose-950/60 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-600 to-crimson flex items-center justify-center font-mono font-bold text-white shadow-lg shadow-rose-600/30">
-        ρ̂
-      </div>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <div class="brand-mark">ρ̂</div>
       <div>
-        <h1 class="text-lg font-bold text-white tracking-tight leading-tight">Shadow Hamiltonian Learning</h1>
-        <p class="text-xs text-rose-300 font-mono">Derandomized Shadows • Streaming Kalman Tracking • v0.2.0</p>
+        <div class="brand-title">shadow-hamiltonian-learning</div>
+        <div class="brand-sub">classical shadows · derandomisation · differentiable inversion · EKF · v0.3.0</div>
       </div>
     </div>
-    <div class="flex items-center space-x-4 text-xs font-mono">
-      <span class="text-rose-400">Cirq + PennyLane Engine</span>
-      <a href="https://github.com/Jaspersands/shadow-hamiltonian-learning" target="_blank" class="px-3 py-1.5 rounded-lg bg-rose-600/10 hover:bg-rose-600/20 text-rose-300 border border-rose-500/30 transition">
-        GitHub Repo ↗
-      </a>
+    <div class="header-actions">
+      <a class="btn btn-sm btn-ghost" href="../../index.html">← Suite</a>
+      <a class="btn btn-sm" href="https://github.com/Jaspersands/shadow-hamiltonian-learning" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
-  </header>
+  </div>
+</header>
 
-  <!-- Main Grid -->
-  <main class="flex-1 max-w-7xl mx-auto w-full p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-    <!-- Left Sidebar: Protocol & Physical Model -->
-    <div class="lg:col-span-5 space-y-6">
-      <!-- Target Model Configuration -->
-      <div class="shadow-card rounded-2xl p-5 shadow-xl">
-        <h2 class="text-xs font-bold uppercase tracking-wider text-rose-400 font-mono mb-4 flex items-center gap-2">
-          <span>01 // Quantum State & Protocol Mode</span>
-        </h2>
-        <div class="space-y-4 text-xs">
-          <div>
-            <label class="text-slate-300 block mb-1">Target Physical Topology</label>
-            <select id="selSystem" class="w-full bg-slate-900 border border-rose-950/80 rounded-lg px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-rose-400">
-              <option value="chain4">4-Qubit Heisenberg XXZ Spin Chain</option>
-              <option value="star4">4-Qubit Central Spin (Star Graph)</option>
-              <option value="fermionic">Fermionic 2-Site Matchgate (Chemistry 1-RDM)</option>
-            </select>
-          </div>
-          <div>
-            <div class="flex justify-between text-slate-300 mb-1">
-              <span>Shadow Snapshot Budget (S)</span>
-              <span id="valSnapshots" class="text-rose-300 font-mono font-bold">1,000 shots</span>
-            </div>
-            <input id="sliderSnapshots" type="range" min="100" max="5000" step="100" value="1000" class="w-full accent-rose-500">
-          </div>
-          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-rose-950/60">
-            <div>
-              <span class="font-bold text-white block">Derandomized Greedy Shadows</span>
-              <span class="text-[11px] text-slate-400">Deterministic Pauli Basis Selection (3-5x Shot Reduction)</span>
-            </div>
-            <input id="chkDerand" type="checkbox" checked class="w-4 h-4 accent-rose-500 rounded">
-          </div>
-          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-rose-950/60">
-            <div>
-              <span class="font-bold text-white block">SPAM Error Mitigation</span>
-              <span class="text-[11px] text-slate-400">Inverted Confusion Matrix Convolution</span>
-            </div>
-            <input id="chkSpam" type="checkbox" checked class="w-4 h-4 accent-rose-500 rounded">
-          </div>
-        </div>
-
-        <button id="btnRunInversion" class="w-full mt-5 py-3 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-400 hover:to-pink-500 text-slate-950 font-bold text-sm shadow-lg shadow-rose-500/25 transition flex items-center justify-center gap-2 font-mono">
-          <span>⚡ Acquire Shadows & Invert Parameters</span>
-        </button>
-      </div>
-
-      <!-- Live Classical Snapshot Stream -->
-      <div class="shadow-card rounded-2xl p-5 shadow-xl">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-xs font-bold uppercase tracking-wider text-rose-400 font-mono">
-            02 // Measurement Snapshot Stream
-          </h2>
-          <span class="text-[10px] text-slate-400 font-mono">Wᵢ ∈ {X, Y, Z}, bᵢ ∈ {0, 1}</span>
-        </div>
-
-        <div id="snapshotStream" class="space-y-2 font-mono text-xs">
-          <!-- Dynamic snapshot rows -->
-        </div>
-      </div>
+<main class="wrap">
+  <section class="hero">
+    <h1>Learn a Hamiltonian from classical shadows</h1>
+    <p>A Heisenberg chain with unknown couplings J<sub>ij</sub> and fields h<sub>i</sub> is prepared in its Gibbs state; the page measures it with randomised or derandomised Pauli shadows (optionally with readout errors), estimates the Pauli observables, and recovers (J, h) by gradient descent through the Gibbs state — then tracks a drifting coupling with an extended Kalman filter. Nothing here is a canned curve.</p>
+    <div class="hero-row">
+      <span class="chip accent"><span class="dot"></span> 2–4 qubits, dense Gibbs states</span>
+      <span class="chip">HKP derandomisation</span>
+      <span class="chip">single-shot readout inversion</span>
+      <span id="selftest" class="chip warn"><span class="dot pulse"></span> self-test running…</span>
     </div>
+  </section>
 
-    <!-- Right Column: Reconstructed Heatmap, Convergence, Error Scaling -->
-    <div class="lg:col-span-7 space-y-6">
-      <!-- Live Metrics Header -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div class="shadow-card rounded-xl p-4 border-l-4 border-rose-500">
-          <div class="text-xs text-slate-400 uppercase font-mono">Frobenius Error ‖J - Ĵ‖</div>
-          <div id="statError" class="text-xl font-black text-rose-400 font-mono mt-1">0.0214</div>
+  <div class="layout">
+    <aside class="sidebar stack">
+      <div class="panel">
+        <div class="panel-kicker">01 · Hidden Hamiltonian</div>
+        <div class="field">
+          <div class="field-row"><span>Qubits N</span><span class="val" id="vN">3</span></div>
+          <input id="N" class="range" type="range" min="2" max="4" step="1" value="3" />
         </div>
-        <div class="shadow-card rounded-xl p-4 border-l-4 border-pink-400">
-          <div class="text-xs text-slate-400 uppercase font-mono">Derandomized Gain</div>
-          <div id="statDerandGain" class="text-xl font-black text-pink-300 font-mono mt-1">3.4 ×</div>
+        <div class="field">
+          <div class="field-row"><span>Inverse temperature β</span><span class="val" id="vBeta">0.8</span></div>
+          <input id="beta" class="range" type="range" min="0.2" max="2.0" step="0.1" value="0.8" />
         </div>
-        <div class="shadow-card rounded-xl p-4 border-l-4 border-amber-400">
-          <div class="text-xs text-slate-400 uppercase font-mono">Inversion Time</div>
-          <div id="statTime" class="text-xl font-black text-amber-300 font-mono mt-1">28.4 ms</div>
+        <div class="field">
+          <div class="field-row"><span>Random model seed</span><span class="val" id="vSeed">3</span></div>
+          <input id="seed" class="range" type="range" min="1" max="50" step="1" value="3" />
         </div>
-        <div class="shadow-card rounded-xl p-4 border-l-4 border-emerald-400">
-          <div class="text-xs text-slate-400 uppercase font-mono">Kalman Drift Status</div>
-          <div class="text-xl font-black text-emerald-300 font-mono mt-1">Locked</div>
+        <dl class="kv" id="kvModel"></dl>
+      </div>
+
+      <div class="panel">
+        <div class="panel-kicker">02 · Shadow protocol</div>
+        <div class="field">
+          <div class="field-row"><span>Snapshots S</span><span class="val" id="vShots">2000</span></div>
+          <input id="shots" class="range" type="range" min="200" max="8000" step="200" value="2000" />
+        </div>
+        <label class="toggle"><div><div class="t-title">Derandomised bases (HKP)</div><div class="t-sub">greedy confidence-bound minimisation for the model observables</div></div><span class="switch"><input id="derand" type="checkbox" checked /><span class="knob"></span></span></label>
+        <label class="toggle"><div><div class="t-title">Readout errors + single-shot inversion</div><div class="t-sub">p(1|0), p(0|1) below; estimator uses g(b) = ((Mᵀ)⁻¹(1,−1))<sub>b</sub></div></div><span class="switch"><input id="spam" type="checkbox" checked /><span class="knob"></span></span></label>
+        <div class="field">
+          <div class="field-row"><span>p(1|0)</span><span class="val" id="vP01">0.02</span></div>
+          <input id="p01" class="range" type="range" min="0" max="0.2" step="0.01" value="0.02" />
+        </div>
+        <div class="field">
+          <div class="field-row"><span>p(0|1)</span><span class="val" id="vP10">0.08</span></div>
+          <input id="p10" class="range" type="range" min="0" max="0.2" step="0.01" value="0.08" />
+        </div>
+        <button id="btnRun" class="btn btn-primary btn-block">⚡ Sample shadows &amp; invert (J, h)</button>
+        <div class="progress"><div id="prog"></div></div>
+        <div class="btn-row" style="margin-top:10px"><button id="btnBudget" class="btn btn-sm">Error vs budget (random vs derandomised)</button><button id="btnEKF" class="btn btn-sm">Run EKF on a drifting J (2 qubits)</button></div>
+      </div>
+    </aside>
+
+    <section class="stack">
+      <div class="stats">
+        <div class="panel stat"><div class="stat-label">‖Ĵ − J‖<sub>F</sub></div><div class="stat-value" id="sJ">—</div><div class="stat-sub" id="sJsub">Frobenius error of couplings</div></div>
+        <div class="panel stat violet"><div class="stat-label">‖ĥ − h‖</div><div class="stat-value" id="sH">—</div><div class="stat-sub" id="sHsub">field error</div></div>
+        <div class="panel stat amber"><div class="stat-label">Observable RMSE</div><div class="stat-value" id="sObs">—</div><div class="stat-sub" id="sObsSub">shadow estimates vs exact</div></div>
+        <div class="panel stat emerald"><div class="stat-label">Condition number</div><div class="stat-value" id="sCond">—</div><div class="stat-sub" id="sCondSub">identifiability (Jacobian SVD)</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div><div class="panel-title">Couplings: true vs recovered</div><div class="panel-note">J<sub>ij</sub> on the off-diagonal, h<sub>i</sub> on the diagonal. Colour = value.</div></div><span class="chip" id="chipInv">—</span></div>
+        <div class="heat-wrap"><div><div class="heat-title">true (J, h)</div><div class="heat" id="heatTrue"></div></div><div><div class="heat-title">recovered (Ĵ, ĥ)</div><div class="heat" id="heatRec"></div></div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">Inversion convergence</div><span class="chip" id="chipLoss">—</span></div>
+          <div class="chart h-48"><canvas id="lossChart"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">Snapshot stream (last 6)</div><span class="chip" id="chipStream">—</span></div>
+          <div class="stream" id="stream"></div>
         </div>
       </div>
 
-      <!-- Reconstructed Coupling Matrix Heatmap -->
-      <div class="shadow-card rounded-2xl p-6 shadow-xl">
-        <div class="flex items-center justify-between mb-4">
-          <div>
-            <h3 class="text-sm font-bold text-white font-mono">Recovered Coupling Matrix Ĵ_ij / 1-RDM</h3>
-            <p class="text-xs text-slate-400">Heisenberg exchange couplings recovered from shadow correlators.</p>
-          </div>
-          <span class="text-xs px-2 py-1 rounded bg-rose-950 text-rose-300 font-mono border border-rose-800">4×4 Symmetric</span>
+      <div class="grid-2">
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">Observable RMSE vs snapshot budget</div><div class="panel-note">10 trials per point on the current model; both estimators unbiased.</div></div><span class="chip" id="chipBudget">not run</span></div>
+          <div class="chart h-56"><canvas id="budgetChart"></canvas></div>
         </div>
-
-        <div class="grid grid-cols-4 gap-2 text-center font-mono text-xs max-w-sm mx-auto" id="couplingHeatmap">
-          <!-- 4x4 Heatmap cells -->
+        <div class="panel">
+          <div class="panel-head"><div><div class="panel-title">EKF tracking of a drifting J₀₁</div><div class="panel-note">one snapshot per update; J steps 0.3 → 0.8 half-way.</div></div><span class="chip" id="chipEKF">not run</span></div>
+          <div class="chart h-56"><canvas id="ekfChart"></canvas></div>
         </div>
       </div>
 
-      <!-- Error Scaling Chart -->
-      <div class="shadow-card rounded-2xl p-6 shadow-xl">
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-bold text-white flex items-center gap-2 font-mono">
-            <span>Sample Complexity Scaling: Error ‖J - Ĵ‖_F vs. Snapshots (S)</span>
-          </h3>
-          <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-rose-300 font-mono">Log-Log Scale</span>
-        </div>
-        <div class="h-56">
-          <canvas id="scalingChart"></canvas>
-        </div>
-      </div>
-    </div>
-  </main>
+      <details class="how">
+        <summary>How this page computes its numbers</summary>
+        <ul>
+          <li><b>Model.</b> H = Σ<sub>i&lt;j</sub> J<sub>ij</sub>(X<sub>i</sub>X<sub>j</sub>+Y<sub>i</sub>Y<sub>j</sub>+Z<sub>i</sub>Z<sub>j</sub>) + Σ<sub>i</sub> h<sub>i</sub>Z<sub>i</sub> as a dense 2ᴺ×2ᴺ matrix; ρ<sub>β</sub> = e<sup>−βH</sup>/Z from a Jacobi eigendecomposition.</li>
+          <li><b>Shadows.</b> Each snapshot rotates ρ into a product Pauli basis (H for X, H·S† for Y) and samples a bitstring from the diagonal; readout errors flip bits with p(1|0), p(0|1).</li>
+          <li><b>Estimators.</b> Random bases: ∏ 3(−1)<sup>b</sup>δ(W,P) averaged over all snapshots. Derandomised bases: mean of ∏(−1)<sup>b</sup> over matching snapshots. With readout errors, (−1)<sup>b</sup> → g(b) = ((Mᵀ)⁻¹(1,−1))<sub>b</sub>, unbiased for asymmetric errors.</li>
+          <li><b>Derandomisation.</b> Huang–Kueng–Preskill Algorithm 1: per shot and qubit choose the Pauli minimising Σ<sub>o</sub> e<sup>−ε²h<sub>o</sub>/2</sup>[1 − ν·1[compatible]·3<sup>−remaining</sup>](1 − ν/3<sup>w</sup>)<sup>M−m−1</sup>, ε = 0.9.</li>
+          <li><b>Inversion.</b> BFGS with central-difference gradients on Σ<sub>o</sub>(⟨o⟩<sub>ρ(J,h)</sub> − ô)²; the Python package uses JAX gradients through <code>eigh</code>. The condition number is the ratio of extreme singular values of ∂⟨o⟩/∂(J,h) at the truth.</li>
+          <li><b>EKF.</b> State (J₀₁, h₀, h₁), random-walk process noise, observation z = ±1 outcome of each compatible model observable, linearised through the Gibbs state, R = 1 − ⟨o⟩².</li>
+        </ul>
+      </details>
+    </section>
+  </div>
+</main>
 
-  <footer class="border-t border-rose-950/60 py-6 text-center text-xs text-slate-500 font-mono">
-    Shadow Hamiltonian Learning • Designed by Jasper Sands • Built with Cirq & PennyLane
-  </footer>
+<footer class="site-footer"><div class="wrap"><span>shadow-hamiltonian-learning v0.3.0 · Jasper Sands · Apache-2.0</span><span class="mono">Python: Cirq · JAX · NumPy — this page: vanilla JS + Chart.js</span></div></footer>
 
-  <script>
-    const systems = {
-      chain4: { name: '4-Qubit Chain', j: [[0, 0.85, 0, 0], [0.85, 0, 0.65, 0], [0, 0.65, 0, 0.90], [0, 0, 0.90, 0]] },
-      star4: { name: '4-Qubit Central Spin', j: [[0, 0.70, 0.70, 0.70], [0.70, 0, 0, 0], [0.70, 0, 0, 0], [0.70, 0, 0, 0]] },
-      fermionic: { name: 'Fermionic 1-RDM', j: [[0.5, 0.42, 0, 0], [0.42, 0.5, 0.38, 0], [0, 0.38, 0.5, 0.45], [0, 0, 0.45, 0.5]] }
-    };
+<script>
+/* ---------------------------------------------------------------------------
+   qcore — tiny dense complex linear algebra + optimisers for the qvibes demos.
+   Matrices are {n, m, re: Float64Array, im: Float64Array} in row-major order.
+   --------------------------------------------------------------------------- */
+const Q = (() => {
+  const TWO_PI = 2 * Math.PI;
 
-    let currentSystem = systems.chain4;
-    let snapshotsCount = 1000;
-    let spamEnabled = true, derandEnabled = true;
-
-    const ctxScaling = document.getElementById('scalingChart').getContext('2d');
-    const scalingChart = new Chart(ctxScaling, {
-      type: 'line',
-      data: {
-        labels: [100, 250, 500, 1000, 2000, 4000, 8000],
-        datasets: [
-          { label: 'Randomized Shadow Inversion', data: [], borderColor: '#f43f5e', borderWidth: 2, pointRadius: 4 },
-          { label: 'Derandomized Greedy Shadows', data: [], borderColor: '#38bdf8', borderWidth: 2, pointRadius: 4 },
-          { label: 'SPAM-Mitigated + Derandomized', data: [], borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, borderWidth: 2.5, pointRadius: 4 }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { grid: { color: '#27202b' }, ticks: { color: '#94a3b8' }, title: { display: true, text: 'Snapshots (S)', color: '#94a3b8' } },
-          y: { type: 'logarithmic', min: 0.005, max: 0.8, grid: { color: '#27202b' }, ticks: { color: '#f43f5e' }, title: { display: true, text: 'Frobenius Error ‖J - Ĵ‖', color: '#f43f5e' } }
-        },
-        plugins: { legend: { labels: { color: '#e2e8f0' } } }
-      }
-    });
-
-    function renderSnapshotStream() {
-      const stream = document.getElementById('snapshotStream');
-      stream.innerHTML = '';
-      const bases = ['X', 'Y', 'Z'];
-
-      for (let i = 0; i < 4; i++) {
-        const b = [bases[Math.floor(Math.random() * 3)], bases[Math.floor(Math.random() * 3)], bases[Math.floor(Math.random() * 3)], bases[Math.floor(Math.random() * 3)]];
-        const bits = [Math.random() > 0.5 ? 1 : 0, Math.random() > 0.5 ? 1 : 0, Math.random() > 0.5 ? 1 : 0, Math.random() > 0.5 ? 1 : 0];
-
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between p-2 rounded bg-slate-900/70 border border-rose-950/40 text-[11px]';
-        row.innerHTML = `
-          <span class="text-slate-400">#${i + 1}</span>
-          <span class="text-rose-300">Bases: [${b.join(', ')}]</span>
-          <span class="text-emerald-400">Bits: |${bits.join('')}⟩</span>
-        `;
-        stream.appendChild(row);
+  function zeros(n, m = n) { return { n, m, re: new Float64Array(n * m), im: new Float64Array(n * m) }; }
+  function eye(n) { const A = zeros(n); for (let i = 0; i < n; i++) A.re[i * n + i] = 1; return A; }
+  function clone(A) { return { n: A.n, m: A.m, re: A.re.slice(), im: A.im.slice() }; }
+  function fromRows(rows) {
+    const n = rows.length, m = rows[0].length, A = zeros(n, m);
+    for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) {
+      const v = rows[i][j];
+      if (typeof v === 'number') A.re[i * m + j] = v; else { A.re[i * m + j] = v[0]; A.im[i * m + j] = v[1]; }
+    }
+    return A;
+  }
+  function mul(A, B) {
+    const n = A.n, k = A.m, m = B.m, C = zeros(n, m);
+    for (let i = 0; i < n; i++) for (let p = 0; p < k; p++) {
+      const ar = A.re[i * k + p], ai = A.im[i * k + p];
+      if (ar === 0 && ai === 0) continue;
+      for (let j = 0; j < m; j++) {
+        const br = B.re[p * m + j], bi = B.im[p * m + j];
+        C.re[i * m + j] += ar * br - ai * bi;
+        C.im[i * m + j] += ar * bi + ai * br;
       }
     }
-
-    function renderHeatmap(recJ) {
-      const container = document.getElementById('couplingHeatmap');
-      container.innerHTML = '';
-
-      for (let r = 0; r < 4; r++) {
-        for (let c = 0; c < 4; c++) {
-          const val = recJ[r][c];
-          const intensity = Math.min(1, Math.max(0, val / 1.0));
-          const cell = document.createElement('div');
-          cell.className = 'p-3 rounded-lg border border-rose-950/80 font-bold transition heatmap-cell';
-          cell.style.backgroundColor = `rgba(244, 63, 94, ${intensity * 0.75 + 0.08})`;
-          cell.style.color = intensity > 0.3 ? '#ffffff' : '#94a3b8';
-          cell.innerText = val.toFixed(2);
-          container.appendChild(cell);
-        }
+    return C;
+  }
+  function add(A, B, s = 1) { const C = clone(A); for (let i = 0; i < C.re.length; i++) { C.re[i] += s * B.re[i]; C.im[i] += s * B.im[i]; } return C; }
+  function scale(A, sr, si = 0) { const C = zeros(A.n, A.m); for (let i = 0; i < C.re.length; i++) { C.re[i] = A.re[i] * sr - A.im[i] * si; C.im[i] = A.re[i] * si + A.im[i] * sr; } return C; }
+  function adj(A) { const C = zeros(A.m, A.n); for (let i = 0; i < A.n; i++) for (let j = 0; j < A.m; j++) { C.re[j * A.n + i] = A.re[i * A.m + j]; C.im[j * A.n + i] = -A.im[i * A.m + j]; } return C; }
+  function trace(A) { let r = 0, i = 0; for (let k = 0; k < A.n; k++) { r += A.re[k * A.m + k]; i += A.im[k * A.m + k]; } return [r, i]; }
+  function kron(A, B) {
+    const n = A.n * B.n, m = A.m * B.m, C = zeros(n, m);
+    for (let i = 0; i < A.n; i++) for (let j = 0; j < A.m; j++) {
+      const ar = A.re[i * A.m + j], ai = A.im[i * A.m + j];
+      for (let k = 0; k < B.n; k++) for (let l = 0; l < B.m; l++) {
+        const br = B.re[k * B.m + l], bi = B.im[k * B.m + l];
+        const idx = (i * B.n + k) * m + (j * B.m + l);
+        C.re[idx] = ar * br - ai * bi; C.im[idx] = ar * bi + ai * br;
       }
     }
+    return C;
+  }
+  function norm1(A) { let mx = 0; for (let j = 0; j < A.m; j++) { let s = 0; for (let i = 0; i < A.n; i++) s += Math.hypot(A.re[i * A.m + j], A.im[i * A.m + j]); mx = Math.max(mx, s); } return mx; }
+  /** exp(A) for a square complex matrix via scaling & squaring + Taylor(16). */
+  function expm(A) {
+    const n = A.n; let s = 0; const nrm = norm1(A);
+    if (nrm > 0.5) s = Math.ceil(Math.log2(nrm / 0.5));
+    const As = scale(A, Math.pow(2, -s));
+    let term = eye(n), result = eye(n);
+    for (let k = 1; k <= 16; k++) { term = scale(mul(term, As), 1 / k); result = add(result, term); }
+    for (let k = 0; k < s; k++) result = mul(result, result);
+    return result;
+  }
+  /** |Tr(A† B)|² / d² — global-phase-invariant process fidelity. */
+  function processFidelity(A, B) { const t = trace(mul(adj(A), B)); return (t[0] * t[0] + t[1] * t[1]) / (A.n * A.n); }
+  function applyToVec(A, v) { // v: {re, im}
+    const n = A.n, out = { re: new Float64Array(n), im: new Float64Array(n) };
+    for (let i = 0; i < n; i++) { let r = 0, im = 0; for (let j = 0; j < A.m; j++) { r += A.re[i * A.m + j] * v.re[j] - A.im[i * A.m + j] * v.im[j]; im += A.re[i * A.m + j] * v.im[j] + A.im[i * A.m + j] * v.re[j]; } out.re[i] = r; out.im[i] = im; }
+    return out;
+  }
+  function rz(theta) { return fromRows([[[Math.cos(theta / 2), -Math.sin(theta / 2)], 0], [0, [Math.cos(theta / 2), Math.sin(theta / 2)]]]); }
+  function isUnitary(A, tol = 1e-8) { const P = mul(adj(A), A); for (let i = 0; i < A.n; i++) for (let j = 0; j < A.n; j++) { const e = (i === j ? 1 : 0); if (Math.abs(P.re[i * A.n + j] - e) > tol || Math.abs(P.im[i * A.n + j]) > tol) return false; } return true; }
 
-    function updateSimulation() {
-      const sVals = [100, 250, 500, 1000, 2000, 4000, 8000];
-      const randErrors = [], derandErrors = [], mitErrors = [];
-
-      sVals.forEach(s => {
-        const randErr = 0.85 / Math.sqrt(s) + 0.035;
-        const derandErr = 0.45 / Math.sqrt(s) + 0.020;
-        const mitErr = 0.35 / Math.sqrt(s) + 0.003;
-
-        randErrors.push(randErr);
-        derandErrors.push(derandErr);
-        mitErrors.push(mitErr);
-      });
-
-      scalingChart.data.datasets[0].data = randErrors;
-      scalingChart.data.datasets[1].data = derandErrors;
-      scalingChart.data.datasets[2].data = mitErrors;
-      scalingChart.update('none');
-
-      let noiseScale = 0.85 / Math.sqrt(snapshotsCount);
-      if (derandEnabled) noiseScale *= 0.55;
-      if (spamEnabled) noiseScale *= 0.75;
-
-      const recJ = [];
-      for (let r = 0; r < 4; r++) {
-        const row = [];
-        for (let c = 0; c < 4; c++) {
-          const trueVal = currentSystem.j[r][c];
-          if (r === c && currentSystem.name !== 'Fermionic 1-RDM') row.push(0.0);
-          else {
-            const jitter = (Math.random() - 0.5) * noiseScale;
-            row.push(Math.max(0, trueVal + jitter));
+  // ---- Hermitian eigendecomposition (cyclic Jacobi on complex Hermitian) ----
+  /** Returns {w (ascending), V (columns = eigenvectors)} with A V = V diag(w). */
+  function eigh(H) {
+    const n = H.n; const A = clone(H); const V = eye(n);
+    for (let sweep = 0; sweep < 80; sweep++) {
+      let off = 0;
+      for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A.re[p * n + q] ** 2 + A.im[p * n + q] ** 2;
+      if (off < 1e-26) break;
+      for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+        const br = A.re[p * n + q], bi = A.im[p * n + q]; const b = Math.hypot(br, bi);
+        if (b < 1e-300) continue;
+        const a = A.re[p * n + p], d = A.re[q * n + q];
+        const theta = 0.5 * Math.atan2(2 * b, a - d), c = Math.cos(theta), s = Math.sin(theta);
+        // e^{-iφ} = conj(a_pq)/|a_pq|;  G = P·R with P = diag(1, e^{-iφ}), R = [[c,-s],[s,c]]
+        const er = br / b, ei = -bi / b;   // e^{-iφ}
+        const g11r = c, g11i = 0, g12r = -s, g12i = 0;
+        const g21r = s * er, g21i = s * ei, g22r = c * er, g22i = c * ei;
+        for (let k = 0; k < n; k++) {   // columns: A ← A G, V ← V G
+          for (const M of [A, V]) {
+            const xr = M.re[k * n + p], xi = M.im[k * n + p], yr = M.re[k * n + q], yi = M.im[k * n + q];
+            M.re[k * n + p] = xr * g11r - xi * g11i + yr * g21r - yi * g21i;
+            M.im[k * n + p] = xr * g11i + xi * g11r + yr * g21i + yi * g21r;
+            M.re[k * n + q] = xr * g12r - xi * g12i + yr * g22r - yi * g22i;
+            M.im[k * n + q] = xr * g12i + xi * g12r + yr * g22i + yi * g22r;
           }
         }
-        recJ.push(row);
+        for (let k = 0; k < n; k++) {   // rows: A ← G† A
+          const xr = A.re[p * n + k], xi = A.im[p * n + k], yr = A.re[q * n + k], yi = A.im[q * n + k];
+          // (G†A)_pk = conj(g11) x + conj(g21) y ; (G†A)_qk = conj(g12) x + conj(g22) y
+          A.re[p * n + k] = g11r * xr + g11i * xi + g21r * yr + g21i * yi;
+          A.im[p * n + k] = g11r * xi - g11i * xr + g21r * yi - g21i * yr;
+          A.re[q * n + k] = g12r * xr + g12i * xi + g22r * yr + g22i * yi;
+          A.im[q * n + k] = g12r * xi - g12i * xr + g22r * yi - g22i * yr;
+        }
+        A.im[p * n + p] = 0; A.im[q * n + q] = 0; A.re[p * n + q] = 0; A.im[p * n + q] = 0; A.re[q * n + p] = 0; A.im[q * n + p] = 0;
       }
-
-      let frob = 0.0;
-      for (let r = 0; r < 4; r++) {
-        for (let c = 0; c < 4; c++) frob += Math.pow(recJ[r][c] - currentSystem.j[r][c], 2);
-      }
-      frob = Math.sqrt(frob);
-
-      document.getElementById('statError').innerText = frob.toFixed(4);
-      document.getElementById('statTime').innerText = `${(snapshotsCount * 0.022 + 4.0).toFixed(1)} ms`;
-      document.getElementById('statDerandGain').innerText = derandEnabled ? '3.4 ×' : '1.0 ×';
-
-      renderHeatmap(recJ);
-      renderSnapshotStream();
     }
+    const w = new Float64Array(n); for (let i = 0; i < n; i++) w[i] = A.re[i * n + i];
+    const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => w[a] - w[b]);
+    const ws = new Float64Array(n), Vs = zeros(n);
+    order.forEach((src, dst) => { ws[dst] = w[src]; for (let k = 0; k < n; k++) { Vs.re[k * n + dst] = V.re[k * n + src]; Vs.im[k * n + dst] = V.im[k * n + src]; } });
+    return { w: ws, V: Vs };
+  }
 
-    document.getElementById('selSystem').addEventListener('change', (e) => { currentSystem = systems[e.target.value]; updateSimulation(); });
-    document.getElementById('sliderSnapshots').addEventListener('input', (e) => { snapshotsCount = parseInt(e.target.value); document.getElementById('valSnapshots').innerText = `${snapshotsCount.toLocaleString()} shots`; updateSimulation(); });
-    document.getElementById('chkDerand').addEventListener('change', (e) => { derandEnabled = e.target.checked; updateSimulation(); });
-    document.getElementById('chkSpam').addEventListener('change', (e) => { spamEnabled = e.target.checked; updateSimulation(); });
-    document.getElementById('btnRunInversion').addEventListener('click', () => updateSimulation());
+  // ---- Optimisers ------------------------------------------------------------
+  /** BFGS with Armijo backtracking on a smooth f: R^n → R with numeric gradient. */
+  function bfgs(f, x0, { maxIter = 200, tol = 1e-12, h = 1e-6, onIter = null, bounds = null } = {}) {
+    const n = x0.length; let x = Float64Array.from(x0);
+    const clampx = v => { if (!bounds) return v; for (let i = 0; i < n; i++) v[i] = Math.min(bounds[i][1], Math.max(bounds[i][0], v[i])); return v; };
+    x = clampx(x);
+    const grad = xx => { const g = new Float64Array(n); for (let i = 0; i < n; i++) { const xp = xx.slice(); xp[i] += h; const xm = xx.slice(); xm[i] -= h; g[i] = (f(xp) - f(xm)) / (2 * h); } return g; };
+    let fx = f(x), g = grad(x); const history = [fx];
+    let Hk = Array.from({ length: n }, (_, i) => Float64Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
+    for (let it = 0; it < maxIter; it++) {
+      const d = new Float64Array(n); for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < n; j++) s -= Hk[i][j] * g[j]; d[i] = s; }
+      let gd = 0; for (let i = 0; i < n; i++) gd += g[i] * d[i];
+      if (gd > 0) { for (let i = 0; i < n; i++) d[i] = -g[i]; gd = 0; for (let i = 0; i < n; i++) gd += g[i] * d[i]; Hk = Array.from({ length: n }, (_, i) => Float64Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))); }
+      let alpha = 1, xn, fn;
+      for (let ls = 0; ls < 40; ls++) { xn = clampx(Float64Array.from(x, (v, i) => v + alpha * d[i])); fn = f(xn); if (fn <= fx + 1e-4 * alpha * gd) break; alpha *= 0.5; }
+      if (!(fn < fx)) { break; }
+      const gn = grad(xn); const s = Float64Array.from(xn, (v, i) => v - x[i]); const y = Float64Array.from(gn, (v, i) => v - g[i]);
+      let sy = 0; for (let i = 0; i < n; i++) sy += s[i] * y[i];
+      if (sy > 1e-14) {
+        const rho = 1 / sy; const Hy = new Float64Array(n); for (let i = 0; i < n; i++) { let t = 0; for (let j = 0; j < n; j++) t += Hk[i][j] * y[j]; Hy[i] = t; }
+        let yHy = 0; for (let i = 0; i < n; i++) yHy += y[i] * Hy[i];
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) Hk[i][j] += (1 + rho * yHy) * rho * s[i] * s[j] - rho * (Hy[i] * s[j] + s[i] * Hy[j]);
+      }
+      const prev = fx; x = xn; fx = fn; g = gn; history.push(fx);
+      if (onIter) onIter(it, fx, x);
+      if (Math.abs(prev - fx) < tol * Math.max(1, Math.abs(fx)) && it > 5) break;
+    }
+    return { x, f: fx, history };
+  }
+  /** Nelder–Mead for a few parameters. */
+  function nelderMead(f, x0, { maxIter = 600, step = 0.5, tol = 1e-12 } = {}) {
+    const n = x0.length; let simplex = [Float64Array.from(x0)];
+    for (let i = 0; i < n; i++) { const p = Float64Array.from(x0); p[i] += step; simplex.push(p); }
+    let vals = simplex.map(f);
+    for (let it = 0; it < maxIter; it++) {
+      const idx = vals.map((v, i) => i).sort((a, b) => vals[a] - vals[b]); simplex = idx.map(i => simplex[i]); vals = idx.map(i => vals[i]);
+      if (Math.abs(vals[n] - vals[0]) < tol) break;
+      const c = new Float64Array(n); for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) c[j] += simplex[i][j] / n;
+      const xr = Float64Array.from(c, (v, j) => v + (v - simplex[n][j])); const fr = f(xr);
+      if (fr < vals[0]) { const xe = Float64Array.from(c, (v, j) => v + 2 * (v - simplex[n][j])); const fe = f(xe); if (fe < fr) { simplex[n] = xe; vals[n] = fe; } else { simplex[n] = xr; vals[n] = fr; } }
+      else if (fr < vals[n - 1]) { simplex[n] = xr; vals[n] = fr; }
+      else { const xc = Float64Array.from(c, (v, j) => v + 0.5 * (simplex[n][j] - v)); const fc = f(xc); if (fc < vals[n]) { simplex[n] = xc; vals[n] = fc; } else { for (let i = 1; i <= n; i++) { simplex[i] = Float64Array.from(simplex[i], (v, j) => simplex[0][j] + 0.5 * (v - simplex[0][j])); vals[i] = f(simplex[i]); } } }
+    }
+    const best = vals.indexOf(Math.min(...vals)); return { x: simplex[best], f: vals[best] };
+  }
 
-    updateSimulation();
-  </script>
+  // ---- RNG (seedable, mulberry32) + Gaussian --------------------------------
+  function rng(seed = 1) { let a = seed >>> 0; const r = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; r.normal = () => { let u = 0, v = 0; while (u === 0) u = r(); while (v === 0) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(TWO_PI * v); }; r.int = n => Math.floor(r() * n); return r; }
+
+  // ---- Chart.js theme ------------------------------------------------------------
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function chartDefaults() {
+    if (typeof Chart === 'undefined') return;
+    Chart.defaults.color = css('--muted'); Chart.defaults.borderColor = css('--border');
+    Chart.defaults.font.family = css('--font-mono') || 'monospace'; Chart.defaults.font.size = 11;
+    Chart.defaults.plugins.legend.labels.boxWidth = 10; Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.plugins.legend.labels.color = css('--text-2');
+    Chart.defaults.plugins.tooltip.backgroundColor = css('--surface-3'); Chart.defaults.plugins.tooltip.titleColor = css('--text'); Chart.defaults.plugins.tooltip.bodyColor = css('--text-2'); Chart.defaults.plugins.tooltip.borderColor = css('--border-2'); Chart.defaults.plugins.tooltip.borderWidth = 1;
+    Chart.defaults.elements.point.radius = 0; Chart.defaults.elements.line.borderWidth = 2; Chart.defaults.animation = false;
+    Chart.defaults.responsive = true; Chart.defaults.maintainAspectRatio = false;
+  }
+  function axis(title, extra = {}) {
+    const base = { grid: { color: css('--border') }, ticks: { color: css('--muted'), maxTicksLimit: 8 }, title: { display: !!title, text: title, color: css('--muted') } };
+    const out = Object.assign(base, extra);
+    if (out.type === 'logarithmic') out.ticks = Object.assign({ callback: v => { const e = Math.log10(v); return Number.isInteger(e) ? (e >= -2 && e <= 3 ? String(v) : `1e${e}`) : ''; } }, out.ticks || {}, { color: css('--muted') });
+    return out;
+  }
+  const fmt = { pct: (x, d = 3) => (100 * x).toFixed(d) + '%', sci: (x, d = 2) => x === 0 ? '0' : x.toExponential(d).replace('e', '×10^').replace('+', ''), num: (x, d = 3) => Number(x).toFixed(d) };
+
+  return { TWO_PI, zeros, eye, clone, fromRows, mul, add, scale, adj, trace, kron, expm, processFidelity, applyToVec, rz, isUnitary, eigh, bfgs, nelderMead, rng, css, chartDefaults, axis, fmt };
+})();
+
+</script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const PAULI = { I: Q.eye(2), X: Q.fromRows([[0, 1], [1, 0]]), Y: Q.fromRows([[0, [0, -1]], [[0, 1], 0]]), Z: Q.fromRows([[1, 0], [0, -1]]) };
+const ROT = { X: Q.scale(Q.fromRows([[1, 1], [1, -1]]), Math.SQRT1_2), Y: Q.mul(Q.scale(Q.fromRows([[1, 1], [1, -1]]), Math.SQRT1_2), Q.fromRows([[1, 0], [0, [0, -1]]])), Z: Q.eye(2) };
+
+// ---------------------------------------------------------------- model
+function pauliString(spec, n) { let M = null; for (let q = 0; q < n; q++) { const P = PAULI[spec[q] || 'I']; M = M ? Q.kron(M, P) : P; } return M; }
+function modelObservables(n) { const obs = []; for (let i = 0; i < n; i++) { const s = 'I'.repeat(n).split(''); s[i] = 'Z'; obs.push(s.join('')); } for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (const p of 'XYZ') { const s = 'I'.repeat(n).split(''); s[i] = p; s[j] = p; obs.push(s.join('')); } return obs; }
+function pairs(n) { const out = []; for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) out.push([i, j]); return out; }
+function hamiltonian(n, J, h) { let H = Q.zeros(1 << n); for (const [i, j] of pairs(n)) { if (J[i][j] === 0) continue; for (const p of 'XYZ') { const s = 'I'.repeat(n).split(''); s[i] = p; s[j] = p; H = Q.add(H, Q.scale(pauliString(s.join(''), n), J[i][j])); } } for (let i = 0; i < n; i++) { if (h[i] === 0) continue; const s = 'I'.repeat(n).split(''); s[i] = 'Z'; H = Q.add(H, Q.scale(pauliString(s.join(''), n), h[i])); } return H; }
+function gibbs(H, beta) { const { w, V } = Q.eigh(H); const d = H.n; const wmin = w[0]; const ws = Array.from(w, v => Math.exp(-beta * (v - wmin))); const Z = ws.reduce((a, b) => a + b, 0); const rho = Q.zeros(d); for (let k = 0; k < d; k++) { const p = ws[k] / Z; for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) { const vr = V.re[i * d + k], vi = V.im[i * d + k], ur = V.re[j * d + k], ui = -V.im[j * d + k]; rho.re[i * d + j] += p * (vr * ur - vi * ui); rho.im[i * d + j] += p * (vr * ui + vi * ur); } } return rho; }
+function expect(rho, P) { return Q.trace(Q.mul(P, rho))[0]; }
+function randomModel(n, seed) { const r = Q.rng(seed); const J = Array.from({ length: n }, () => Array(n).fill(0)); for (let i = 0; i < n - 1; i++) { const v = (0.3 + 0.6 * r()) * (r() < 0.5 ? -1 : 1); J[i][i + 1] = J[i + 1][i] = v; } const h = Array.from({ length: n }, () => (r() - 0.5)); return { J, h }; }
+function pack(n, J, h) { return Float64Array.from([...pairs(n).map(([i, j]) => J[i][j]), ...h]); }
+function unpack(n, p) { const J = Array.from({ length: n }, () => Array(n).fill(0)); pairs(n).forEach(([i, j], k) => { J[i][j] = J[j][i] = p[k]; }); return { J, h: Array.from(p.slice(pairs(n).length)) }; }
+
+// ---------------------------------------------------------------- shadows
+function sampleShadows(rho, n, S, rng, bases, readout) {
+  const d = 1 << n; const cache = new Map(); const out = [];
+  for (let s = 0; s < S; s++) {
+    const b = bases ? bases[s] : Array.from({ length: n }, () => 'XYZ'[rng.int(3)]); const key = b.join('');
+    if (!cache.has(key)) { let U = null; for (const x of b) U = U ? Q.kron(U, ROT[x]) : ROT[x]; const M = Q.mul(Q.mul(U, rho), Q.adj(U)); const probs = Float64Array.from({ length: d }, (_, i) => Math.max(0, M.re[i * d + i])); const tot = probs.reduce((a, c) => a + c, 0); cache.set(key, probs.map(v => v / tot)); }
+    const probs = cache.get(key); let u = rng(), idx = 0; while (idx < d - 1 && u > probs[idx]) { u -= probs[idx]; idx++; }
+    const bits = Array.from({ length: n }, (_, k) => (idx >> (n - 1 - k)) & 1);
+    if (readout) for (let k = 0; k < n; k++) { if (bits[k] === 0 && rng() < readout.p01) bits[k] = 1; else if (bits[k] === 1 && rng() < readout.p10) bits[k] = 0; }
+    out.push({ bases: b, bits });
+  }
+  return out;
+}
+function readoutG(p01, p10) { const det = 1 - p01 - p10; if (Math.abs(det) < 1e-4) return [1, -1]; // M = [[1-p01, p10],[p01, 1-p10]]; g = (M^T)^-1 (1,-1)
+  const inv = [[(1 - p10) / det, -p10 / det], [-p01 / det, (1 - p01) / det]]; return [inv[0][0] - inv[1][0], inv[0][1] - inv[1][1]]; }
+function estimate(snaps, P, derand, g) {
+  const sup = []; for (let k = 0; k < P.length; k++) if (P[k] !== 'I') sup.push(k); if (!sup.length) return 1;
+  let sum = 0, cnt = 0;
+  for (const s of snaps) { let ok = true; for (const k of sup) if (s.bases[k] !== P[k]) { ok = false; break; } if (!ok) continue; let v = 1; for (const k of sup) v *= g ? g[s.bits[k]] : (s.bits[k] ? -1 : 1); sum += v; cnt++; }
+  if (derand) return cnt ? sum / cnt : 0; return Math.pow(3, sup.length) * sum / snaps.length;
+}
+function derandomize(obs, n, M, eps = 0.9) {
+  const nu = 1 - Math.exp(-eps * eps / 2); const w = obs.map(o => [...o].filter(c => c !== 'I').length); const hits = new Float64Array(obs.length); const bases = [];
+  for (let m = 0; m < M; m++) {
+    const assigned = [];
+    // log-weights: exp(−ε²h/2)·(1−ν/3^w)^(M−m−1) underflows for large M; rescale by the max
+    const logW = w.map((ww, j) => -eps * eps / 2 * hits[j] + (M - m - 1) * Math.log1p(-nu / Math.pow(3, ww))); const mx = Math.max(...logW); const weight = logW.map(v => Math.exp(v - mx));
+    for (let k = 0; k < n; k++) { let bestW = 'Z', bestC = Infinity;
+      for (const W of 'XYZ') { const trial = [...assigned, W]; let cost = 0;
+        for (let j = 0; j < obs.length; j++) { const o = obs[j]; let comp = true; for (let q = 0; q <= k; q++) if (o[q] !== 'I' && o[q] !== trial[q]) { comp = false; break; } let rem = 0; for (let q = k + 1; q < n; q++) if (o[q] !== 'I') rem++; cost += weight[j] * (1 - (comp ? nu * Math.pow(3, -rem) : 0)); }
+        if (cost < bestC * (1 - 1e-9)) { bestC = cost; bestW = W; } }
+      assigned.push(bestW); }
+    bases.push(assigned); obs.forEach((o, j) => { let comp = true; for (let q = 0; q < n; q++) if (o[q] !== 'I' && o[q] !== assigned[q]) { comp = false; break; } if (comp) hits[j]++; });
+  }
+  return bases;
+}
+
+// ---------------------------------------------------------------- inversion & identifiability
+function makeLoss(n, obsList, mats, targets, beta) { return p => { const { J, h } = unpack(n, p); const rho = gibbs(hamiltonian(n, J, h), beta); let L = 0; for (let k = 0; k < obsList.length; k++) { const e = expect(rho, mats[k]) - targets[k]; L += e * e; } return L + 1e-8 * p.reduce((a, b) => a + b * b, 0); }; }
+function jacobian(n, obsMats, p, beta, eps = 1e-5) { const m = obsMats.length; const Jm = Array.from({ length: m }, () => new Float64Array(p.length)); for (let l = 0; l < p.length; l++) { const pp = p.slice(); pp[l] += eps; const pm = p.slice(); pm[l] -= eps; const rp = gibbs(hamiltonian(n, unpack(n, pp).J, unpack(n, pp).h), beta), rm = gibbs(hamiltonian(n, unpack(n, pm).J, unpack(n, pm).h), beta); for (let k = 0; k < m; k++) Jm[k][l] = (expect(rp, obsMats[k]) - expect(rm, obsMats[k])) / (2 * eps); } return Jm; }
+function singularValues(Jm) { // eigenvalues of J^T J via Jacobi on a real symmetric matrix
+  const m = Jm.length, nP = Jm[0].length; const A = Q.zeros(nP); for (let a = 0; a < nP; a++) for (let b = 0; b < nP; b++) { let s = 0; for (let k = 0; k < m; k++) s += Jm[k][a] * Jm[k][b]; A.re[a * nP + b] = s; } const { w, V } = Q.eigh(A); return { sv: Array.from(w, v => Math.sqrt(Math.max(v, 0))), V }; }
+
+// ---------------------------------------------------------------- charts & UI
+Q.chartDefaults(); const C = Q.css;
+const lossChart = new Chart($('lossChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'loss', data: [], borderColor: C('--accent') }] }, options: { scales: { x: Q.axis('BFGS iteration'), y: Q.axis('', { type: 'logarithmic' }) }, plugins: { legend: { display: false } } } });
+const budgetChart = new Chart($('budgetChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'random bases', data: [], borderColor: C('--rose'), pointRadius: 4 }, { label: 'derandomised', data: [], borderColor: C('--sky'), pointRadius: 4 }, { label: '3/√S', data: [], borderColor: C('--muted-2'), borderDash: [4, 4] }] }, options: { scales: { x: Q.axis('snapshots S', { type: 'logarithmic' }), y: Q.axis('RMSE', { type: 'logarithmic' }) } } });
+const ekfChart = new Chart($('ekfChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'true J₀₁', data: [], borderColor: C('--muted'), borderDash: [4, 4] }, { label: 'EKF estimate', data: [], borderColor: C('--accent') }, { label: '±1σ', data: [], borderColor: 'rgba(251,113,133,0.25)', borderWidth: 1 }, { label: '', data: [], borderColor: 'rgba(251,113,133,0.25)', borderWidth: 1 }] }, options: { scales: { x: Q.axis('snapshot'), y: Q.axis('J₀₁') }, plugins: { legend: { labels: { filter: it => it.text !== '' } } } } });
+
+const S = { n: 3, beta: 0.8, seed: 3, shots: 2000, derand: true, spam: true, p01: 0.02, p10: 0.08, model: null, obs: null, mats: null, rho: null };
+function read() { S.n = +$('N').value; S.beta = +$('beta').value; S.seed = +$('seed').value; S.shots = +$('shots').value; S.derand = $('derand').checked; S.spam = $('spam').checked; S.p01 = +$('p01').value; S.p10 = +$('p10').value;
+  $('vN').textContent = S.n; $('vBeta').textContent = S.beta.toFixed(1); $('vSeed').textContent = S.seed; $('vShots').textContent = S.shots; $('vP01').textContent = S.p01.toFixed(2); $('vP10').textContent = S.p10.toFixed(2); }
+function heat(el, n, J, h) { el.innerHTML = ''; el.style.gridTemplateColumns = `repeat(${n}, 1fr)`; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = i === j ? h[i] : J[i][j]; const d = document.createElement('div'); d.className = 'cell'; const a = Math.min(1, Math.abs(v)); d.style.background = v >= 0 ? `rgba(251,113,133,${0.12 + 0.7 * a})` : `rgba(56,189,248,${0.12 + 0.7 * a})`; d.style.color = a > 0.35 ? '#fff' : C('--text-2'); d.textContent = v.toFixed(2); d.title = i === j ? `h${i}` : `J${i}${j}`; el.appendChild(d); } }
+function buildModel() { read(); S.model = randomModel(S.n, S.seed); S.obs = modelObservables(S.n); S.mats = S.obs.map(o => pauliString(o, S.n)); S.rho = gibbs(hamiltonian(S.n, S.model.J, S.model.h), S.beta);
+  const { sv } = singularValues(jacobian(S.n, S.mats, pack(S.n, S.model.J, S.model.h), S.beta)); const cond = sv[sv.length - 1] / Math.max(sv[0], 1e-12);
+  $('sCond').textContent = cond.toFixed(1); $('sCondSub').textContent = `σ_max/σ_min of ∂⟨o⟩/∂(J,h) · ${S.obs.length} observables, ${sv.length} parameters`;
+  const gs = Array.from(S.rho.re).filter((_, i) => i % ((1 << S.n) + 1) === 0);
+  $('kvModel').innerHTML = `<dt>couplings</dt><dd>${pairs(S.n).filter(([i, j]) => S.model.J[i][j] !== 0).map(([i, j]) => `J${i}${j}=${S.model.J[i][j].toFixed(2)}`).join(' ')}</dd><dt>fields</dt><dd>${S.model.h.map((v, i) => `h${i}=${v.toFixed(2)}`).join(' ')}</dd><dt>purity Tr ρ²</dt><dd>${Q.trace(Q.mul(S.rho, S.rho))[0].toFixed(3)}</dd><dt>observables</dt><dd>${S.obs.length}</dd>`;
+  heat($('heatTrue'), S.n, S.model.J, S.model.h); }
+async function run() {
+  buildModel(); const btn = $('btnRun'); btn.disabled = true; btn.textContent = '⏳ sampling…'; $('prog').style.width = '10%'; await new Promise(r => setTimeout(r, 10));
+  const rng = Q.rng(100 + S.seed); const bases = S.derand ? derandomize(S.obs, S.n, S.shots) : null; const readout = S.spam ? { p01: S.p01, p10: S.p10 } : null;
+  const snaps = sampleShadows(S.rho, S.n, S.shots, rng, bases, readout); const g = S.spam ? readoutG(S.p01, S.p10) : null;
+  const targets = S.obs.map(o => Math.max(-1, Math.min(1, estimate(snaps, o, S.derand, g)))); const exact = S.mats.map(M => expect(S.rho, M));
+  const rmse = Math.sqrt(targets.reduce((a, t, k) => a + (t - exact[k]) ** 2, 0) / targets.length);
+  $('sObs').textContent = rmse.toFixed(4); $('sObsSub').textContent = `${S.shots} ${S.derand ? 'derandomised' : 'random'} snapshots${S.spam ? ' · readout-corrected' : ''}`;
+  $('stream').innerHTML = snaps.slice(-6).map((s, i) => `<div class="row"><span>#${snaps.length - 6 + i + 1}</span><span class="b">bases [${s.bases.join(' ')}]</span><span class="k">bits |${s.bits.join('')}⟩</span></div>`).join(''); $('chipStream').textContent = `${new Set(snaps.map(s => s.bases.join(''))).size} distinct basis settings`;
+  $('prog').style.width = '45%'; btn.textContent = '⏳ inverting…'; await new Promise(r => setTimeout(r, 10));
+  const loss = makeLoss(S.n, S.obs, S.mats, targets, S.beta); const nP = S.mats.length ? pack(S.n, S.model.J, S.model.h).length : 0; let best = null;
+  const bounds = Array.from({ length: nP }, () => [-2.5, 2.5]);
+  for (let r = 0; r < 4; r++) { const p0 = Float64Array.from({ length: nP }, () => r === 0 ? 0.05 : (rng() - 0.5)); const res = Q.bfgs(loss, p0, { maxIter: 200, tol: 1e-14, h: 1e-5, bounds }); if (!best || res.f < best.f) best = res; if (best.f < 1e-8) break; }
+  const rec = unpack(S.n, best.x); let eJ = 0, eH = 0; for (const [i, j] of pairs(S.n)) eJ += 2 * (rec.J[i][j] - S.model.J[i][j]) ** 2; eJ = Math.sqrt(eJ); eH = Math.sqrt(rec.h.reduce((a, v, i) => a + (v - S.model.h[i]) ** 2, 0));
+  $('sJ').textContent = eJ.toFixed(3); $('sJsub').textContent = `true J: ${pairs(S.n).slice(0, 3).map(([i, j]) => S.model.J[i][j].toFixed(2)).join(', ')} → ${pairs(S.n).slice(0, 3).map(([i, j]) => rec.J[i][j].toFixed(2)).join(', ')}`;
+  $('sH').textContent = eH.toFixed(3); $('sHsub').textContent = `true h: ${S.model.h.map(v => v.toFixed(2)).join(', ')} → ${rec.h.map(v => v.toFixed(2)).join(', ')}`;
+  heat($('heatRec'), S.n, rec.J, rec.h); $('chipInv').textContent = `loss ${Q.fmt.sci(best.f, 1)} · ${best.history.length} BFGS iterations`;
+  lossChart.data.labels = best.history.map((_, i) => i); lossChart.data.datasets[0].data = best.history.map(v => Math.max(v, 1e-16)); lossChart.update(); $('chipLoss').textContent = `${nP} parameters`;
+  btn.disabled = false; btn.textContent = '⚡ Sample shadows & invert (J, h)'; $('prog').style.width = '100%';
+}
+async function budget() {
+  buildModel(); const btn = $('btnBudget'); btn.disabled = true; const budgets = [100, 200, 400, 800, 1600, 3200]; const exact = S.mats.map(M => expect(S.rho, M)); const rr = [], rd = [];
+  for (const B of budgets) { await new Promise(r => setTimeout(r, 5)); const bases = derandomize(S.obs, S.n, B); let ar = 0, ad = 0; const T = 10;
+    for (let t = 0; t < T; t++) { const rng = Q.rng(7000 * B + t); const sr = sampleShadows(S.rho, S.n, B, rng, null, null), sd = sampleShadows(S.rho, S.n, B, rng, bases, null);
+      ar += Math.sqrt(S.obs.reduce((a, o, k) => a + (estimate(sr, o, false, null) - exact[k]) ** 2, 0) / S.obs.length); ad += Math.sqrt(S.obs.reduce((a, o, k) => a + (estimate(sd, o, true, null) - exact[k]) ** 2, 0) / S.obs.length); }
+    rr.push(ar / T); rd.push(ad / T); budgetChart.data.labels = budgets.slice(0, rr.length); budgetChart.data.datasets[0].data = rr; budgetChart.data.datasets[1].data = rd; budgetChart.data.datasets[2].data = budgets.slice(0, rr.length).map(b => 3 / Math.sqrt(b)); budgetChart.update(); }
+  $('chipBudget').textContent = `gain at S=3200: ×${(rr[rr.length - 1] / rd[rd.length - 1]).toFixed(2)}`; btn.disabled = false;
+}
+async function ekf() {
+  const btn = $('btnEKF'); btn.disabled = true; read(); const n = 2, beta = 1.5, h = [0.2, -0.15]; const obs = modelObservables(n), mats = obs.map(o => pauliString(o, n)); const rng = Q.rng(11);
+  let x = new Float64Array([0, 0, 0]); let P = [[0.25, 0, 0], [0, 0.25, 0], [0, 0, 0.25]]; const q = 0.005 ** 2; const est = [], sig = [], truth = [];
+  const preds = xx => { const u = unpack(n, xx); const rho = gibbs(hamiltonian(n, u.J, u.h), beta); return mats.map(M => expect(rho, M)); };
+  const total = 2000; let rho = null;
+  for (let k = 0; k < total; k++) {
+    const jv = k < total / 2 ? 0.3 : 0.8; if (k % 250 === 0) rho = gibbs(hamiltonian(n, [[0, jv], [jv, 0]], h), beta);
+    const snap = sampleShadows(rho, n, 1, rng, null, null)[0];
+    for (let i = 0; i < 3; i++) P[i][i] += q;
+    const compat = []; obs.forEach((o, idx) => { let ok = true; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && o[qq] !== snap.bases[qq]) ok = false; if (ok) { let z = 1; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && snap.bits[qq]) z = -z; compat.push([idx, z]); } });
+    for (const [idx, z] of compat) {
+      const p0 = preds(x); const Jac = jacobian(n, mats, x, beta, 1e-4)[idx]; const r = Math.max(0.05, 1 - p0[idx] ** 2);
+      const PH = [0, 1, 2].map(i => P[i][0] * Jac[0] + P[i][1] * Jac[1] + P[i][2] * Jac[2]); const Sv = Jac[0] * PH[0] + Jac[1] * PH[1] + Jac[2] * PH[2] + r; const K = PH.map(v => v / Sv);
+      const innov = z - p0[idx]; x = Float64Array.from(x, (v, i) => v + K[i] * innov); const Pn = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { let s = 0; for (let l = 0; l < 3; l++) s += ((i === l ? 1 : 0) - K[i] * Jac[l]) * P[l][j]; Pn[i][j] = s; } P = Pn;
+    }
+    est.push(x[0]); sig.push(Math.sqrt(Math.max(P[0][0], 0))); truth.push(jv);
+    if (k % 100 === 99) { ekfChart.data.labels = est.map((_, i) => i); ekfChart.data.datasets[0].data = truth; ekfChart.data.datasets[1].data = est; ekfChart.data.datasets[2].data = est.map((v, i) => v + sig[i]); ekfChart.data.datasets[3].data = est.map((v, i) => v - sig[i]); ekfChart.update(); await new Promise(r => setTimeout(r, 0)); }
+  }
+  $('chipEKF').textContent = `at 900: ${est[899].toFixed(2)} (0.30) · at 2000: ${est[1999].toFixed(2)} (0.80) · σ ${sig[1999].toFixed(2)}`; btn.disabled = false;
+}
+window.__shadow = { sampleShadows, estimate, gibbs, hamiltonian, expect, pauliString, modelObservables, derandomize, readoutG, makeLoss, unpack, pack, jacobian, singularValues, randomModel, S };
+['N', 'beta', 'seed', 'shots', 'p01', 'p10'].forEach(id => $(id).addEventListener('input', () => { read(); if (['N', 'beta', 'seed'].includes(id)) buildModel(); }));
+['derand', 'spam'].forEach(id => $(id).addEventListener('change', read));
+$('btnRun').addEventListener('click', run); $('btnBudget').addEventListener('click', budget); $('btnEKF').addEventListener('click', ekf);
+
+(async () => {
+  read();
+  // self-test: Bell-state shadows reproduce <ZZ> = 1 and <YY> = −1 within shot noise
+  const bell = Q.zeros(4); for (const [i, j] of [[0, 0], [0, 3], [3, 0], [3, 3]]) bell.re[i * 4 + j] = 0.5;
+  const sn = sampleShadows(bell, 2, 3000, Q.rng(5), null, null); const zz = estimate(sn, 'ZZ', false, null), yy = estimate(sn, 'YY', false, null);
+  const ok = Math.abs(zz - 1) < 0.15 && Math.abs(yy + 1) < 0.15; const el = $('selftest'); el.className = 'chip ' + (ok ? 'ok' : 'bad'); el.innerHTML = `<span class="dot"></span> self-test ${ok ? 'passed' : 'FAILED'}: Bell ⟨ZZ⟩ = ${zz.toFixed(3)}, ⟨YY⟩ = ${yy.toFixed(3)} (3000 shots)`;
+  await run();
+})();
+})();
+</script>
 </body>
 </html>
