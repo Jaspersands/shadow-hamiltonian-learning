@@ -12,7 +12,7 @@ A classical shadow turns single-shot measurements in random bases into unbiased 
 - tracking drifting parameters from a stream of snapshots
 - fermionic (matchgate) shadows, and process tomography constrained to physical channels
 
-[Interactive page](web/index.html): shadows of a thermal Heisenberg chain in the browser, with the inversion, basis comparison and Kalman filter running in a background worker.
+[Interactive page](https://shadows.jaspersands.com/): shadows of a thermal Heisenberg chain in the browser, with the inversion, basis comparison and Kalman filter running in a background worker.
 
 ## Modules
 
