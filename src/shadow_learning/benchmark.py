@@ -27,7 +27,7 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
         (log.append(msg) if log is not None else print(msg))
 
     say("=" * 72)
-    say("CLASSICAL SHADOWS → HAMILTONIAN LEARNING BENCHMARK (v0.3)")
+    say("CLASSICAL SHADOWS → HAMILTONIAN LEARNING BENCHMARK (v0.4)")
     say("=" * 72)
     rng = np.random.default_rng(42)
 

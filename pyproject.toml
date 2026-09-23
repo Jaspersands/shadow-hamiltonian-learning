@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shadow-hamiltonian-learning"
-version = "0.3.0"
+version = "0.4.0"
 description = "Classical shadows: randomised, derandomised and matchgate shadows, readout mitigation, Hamiltonian learning with exact gradients, EKF tracking and shadow process tomography"
 readme = "README.md"
 requires-python = ">=3.10"

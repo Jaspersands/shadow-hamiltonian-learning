@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 — 2026-09-23
+
+Changes from an adversarial review of 0.3.
+
+### Fixed
+- Gradients were taken through `jnp.linalg.eigh` and were NaN on any degenerate spectrum (every SU(2)-symmetric chain). The default backend is now the exact Fréchet derivative of e^{−βH} with degenerate-limit divided differences; `backend="jax"` differentiates through `expm`.
+- A restart that returned NaN froze the result at the initial guess, because `x < NaN` is always false. Non-finite restarts are skipped, non-finite parameters are rejected by the objective, and a `RuntimeError` is raised if every restart fails.
+- Process tomography returned unphysical Choi matrices (negative eigenvalues, F_pro > 1). Estimates are projected onto CPTP channels with Dykstra's algorithm by default; the raw estimate is kept as `ptm_raw` / `choi_raw`. Added `ptm_from_choi`, `is_physical`, `project_cptp`.
+- The EKF updated sequentially with independent-noise assumptions and a non-Joseph covariance update. It now makes one joint update per snapshot with the exact outcome covariance and the Joseph form, and uses the exact Jacobian.
+
+### Added
+- Matchgate shadows: `FermionicGaussianState` and an O(n³)-per-snapshot covariance sampler (no 2ⁿ objects), degree-4 Majorana estimators, `estimate_2rdm`, exact references via Wick's theorem, `two_body_energy`.
+
+### Changed
+- Core dependencies are NumPy and SciPy; Cirq and JAX are optional extras; PennyLane and matplotlib removed from requirements.
+- Tests: 45 → 59.
+
 ## 0.3.0 — 2026-09-21
 
 ### Fixed (correctness)

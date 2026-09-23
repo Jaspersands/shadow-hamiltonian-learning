@@ -3,276 +3,278 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Shadow Learning Observatory</title>
-<meta name="description" content="Classical shadows in your browser: Gibbs states, random and derandomised Pauli shadows with readout error, exact SPAM inversion, differentiable Hamiltonian learning and EKF tracking — every number computed on the page." />
+<title>Hamiltonian Learning from Shadows</title>
+<meta name="description" content="Learn the couplings of a spin Hamiltonian from classical shadows of its Gibbs state, in the browser: random and derandomised Pauli shadows, readout-error correction, inversion and Kalman tracking." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 /* ---------------------------------------------------------------------------
-   qvibes design system — shared by all four project demos and the hub.
-   Tokens live on :root; each page overrides --accent / --accent-2 / --accent-rgb.
+   Shared stylesheet for the four project pages and the index.
+   Plain research-page styling: paper background, serif prose, hairline rules,
+   one muted accent per project (set with --accent on each page).
    --------------------------------------------------------------------------- */
 :root {
-  --bg: #070a12;
-  --bg-2: #0b101c;
-  --surface: #0f1522;
-  --surface-2: #151d2e;
-  --surface-3: #1b2538;
-  --border: #202b42;
-  --border-2: #2a3752;
-  --text: #e8eef8;
-  --text-2: #c2cde0;
-  --muted: #8592ad;
-  --muted-2: #5d6a86;
-  --accent: #22d3ee;
-  --accent-2: #60a5fa;
-  --accent-rgb: 34, 211, 238;
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --bad: #fb7185;
-  --violet: #a78bfa;
-  --rose: #fb7185;
-  --emerald: #34d399;
-  --amber: #fbbf24;
-  --sky: #38bdf8;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow: 0 12px 40px -18px rgba(0, 0, 0, 0.7);
-  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --surface-2: #f2f0ea;
+  --surface-3: #e9e6de;
+  --border: #e3dfd5;
+  --border-2: #cdc7b9;
+  --grid: #ece9e1;
+  --text: #1d1c1a;
+  --text-2: #3f3c36;
+  --muted: #6e695f;
+  --muted-2: #9b9589;
+  --accent: #1f5f8b;
+  --accent-soft: rgba(31, 95, 139, 0.10);
+  --ok: #3d7a55;
+  --warn: #9a6a12;
+  --bad: #a8412f;
+  /* data series (muted, distinguishable in both themes) */
+  --rose: #b0503a;
+  --violet: #6b58a6;
+  --emerald: #3d7a55;
+  --amber: #a8781c;
+  --sky: #3a7bab;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-ui: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --surface: #1c1c1a; --surface-2: #232320; --surface-3: #2c2b28;
+    --border: #2f2e2a; --border-2: #45433d; --grid: #262522;
+    --text: #ebe8e1; --text-2: #cfcbc2; --muted: #9c978c; --muted-2: #706b62;
+    --accent-soft: rgba(120, 170, 210, 0.12);
+    --ok: #7fb893; --warn: #d4a64a; --bad: #e08a78;
+    --rose: #dc8a72; --violet: #a797dc; --emerald: #7fb893; --amber: #d4a64a; --sky: #7fb2d9;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --surface: #1c1c1a; --surface-2: #232320; --surface-3: #2c2b28;
+  --border: #2f2e2a; --border-2: #45433d; --grid: #262522;
+  --text: #ebe8e1; --text-2: #cfcbc2; --muted: #9c978c; --muted-2: #706b62;
+  --accent-soft: rgba(120, 170, 210, 0.12);
+  --ok: #7fb893; --warn: #d4a64a; --bad: #e08a78;
+  --rose: #dc8a72; --violet: #a797dc; --emerald: #7fb893; --amber: #d4a64a; --sky: #7fb2d9;
   color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   font-family: var(--font-ui);
   font-size: 15px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text);
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(var(--accent-rgb), 0.10), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(96, 165, 250, 0.07), transparent 60%),
-    var(--bg);
-  min-height: 100vh;
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-code, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-h1, h2, h3, h4 { margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.92em; font-variant-numeric: tabular-nums; }
+h1, h2, h3, h4 { margin: 0; line-height: 1.25; font-weight: 600; }
 p { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
-::selection { background: rgba(var(--accent-rgb), 0.35); }
+::selection { background: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
 
 /* Layout ------------------------------------------------------------------ */
-.wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
-.site-header {
-  position: sticky; top: 0; z-index: 40;
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  background: rgba(7, 10, 18, 0.72);
-  border-bottom: 1px solid var(--border);
-}
-.site-header .wrap { display: flex; align-items: center; gap: 14px; min-height: 60px; }
-.brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; }
-.brand > div { min-width: 0; }
-@media (max-width: 560px) { .brand-sub { display: none; } .brand-title { font-size: 14.5px; } }
-.brand-mark {
-  width: 36px; height: 36px; border-radius: 10px; flex: none;
-  display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 15px;
-  color: #06070d;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 6px 20px -6px rgba(var(--accent-rgb), 0.6);
-}
-.brand-title { font-weight: 700; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.brand-sub { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
-.hero { padding: 28px 0 8px; }
-.hero h1 { font-size: clamp(22px, 3.2vw, 32px); font-weight: 800; letter-spacing: -0.02em; }
-.hero p { color: var(--text-2); max-width: 820px; margin-top: 8px; font-size: 15px; }
-.hero-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 28px; } }
+.site-header { border-bottom: 1px solid var(--border); }
+.site-header .wrap { display: flex; align-items: center; gap: 14px; min-height: 52px; }
+.brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1 1 auto; font-size: 14px; color: var(--muted); }
+.brand a { color: var(--muted); text-decoration: none; white-space: nowrap; }
+.brand a:hover { color: var(--text); }
+.brand .sep { color: var(--muted-2); }
+.brand-title { color: var(--text); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-mark, .brand-sub { display: none; }
+.header-actions { margin-left: auto; display: flex; gap: 18px; align-items: center; flex: none; font-size: 14px; }
+.header-actions a { color: var(--muted); text-decoration: none; }
+.header-actions a:hover { color: var(--text); }
+@media (max-width: 560px) { .header-actions a[href$="index.html"] { display: none; } .header-actions { gap: 14px; } }
 
-.layout { display: grid; grid-template-columns: 1fr; gap: 18px; padding: 18px 0 40px; }
+.hero { padding: 40px 0 8px; max-width: 760px; }
+.hero h1 { font-family: var(--font-serif); font-size: clamp(26px, 3.4vw, 36px); font-weight: 600; letter-spacing: -0.01em; }
+.hero p { font-family: var(--font-serif); color: var(--text-2); margin-top: 14px; font-size: 18px; line-height: 1.6; }
+.hero .check { font-family: var(--font-ui); font-size: 13px; color: var(--muted); margin-top: 16px; }
+.hero .check.ok::before { content: "✓ "; color: var(--ok); }
+.hero .check.bad { color: var(--bad); }
+.hero-row { display: none; }
+
+.layout { display: grid; grid-template-columns: 1fr; gap: 24px; padding: 28px 0 48px; }
 @media (min-width: 1024px) {
-  .layout { grid-template-columns: 350px minmax(0, 1fr); align-items: start; }
-  .sidebar { position: sticky; top: 76px; }
+  .layout { grid-template-columns: 320px minmax(0, 1fr); align-items: start; gap: 32px; }
+  .sidebar { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
 }
-.stack { display: grid; gap: 16px; min-width: 0; }
+.stack { display: grid; gap: 20px; min-width: 0; }
 .layout > *, .stack > *, .grid-2 > *, .stats > * { min-width: 0; }
-.grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
-@media (min-width: 720px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
-.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grid-2 { display: grid; grid-template-columns: 1fr; gap: 20px; }
+@media (min-width: 760px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
+
+/* Summary numbers: a single ruled row, no cards */
+.stats {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
 @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stats > .panel.stat { background: none; border: 0; border-radius: 0; padding: 14px 16px 14px 0; }
+.stats > .panel.stat + .panel.stat { padding-left: 16px; border-left: 1px solid var(--border); }
+@media (max-width: 719px) { .stats > .panel.stat:nth-child(3) { border-left: 0; padding-left: 0; } .stats > .panel.stat:nth-child(n+3) { border-top: 1px solid var(--border); } }
+.stat-label { font-size: 12.5px; color: var(--muted); }
+.stat-value { font-family: var(--font-mono); font-weight: 500; font-size: clamp(18px, 2vw, 23px); margin-top: 2px; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stat-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
 /* Panels ------------------------------------------------------------------ */
-.panel {
-  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0)) , var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 18px;
-}
-.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-.panel-title { font-size: 13.5px; font-weight: 700; letter-spacing: 0.01em; }
-.panel-kicker {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--accent); margin-bottom: 10px;
-}
-.panel-note { font-size: 12.5px; color: var(--muted); }
-.stat { padding: 14px 16px; border-left: 3px solid var(--accent); }
-.stat-label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-.stat-value { font-family: var(--font-mono); font-weight: 700; font-size: clamp(17px, 1.8vw, 22px); margin-top: 4px; color: var(--text); overflow-wrap: anywhere; }
-.stat-sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
-.stat.violet { border-color: var(--violet); } .stat.rose { border-color: var(--rose); }
-.stat.emerald { border-color: var(--emerald); } .stat.amber { border-color: var(--amber); } .stat.sky { border-color: var(--sky); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin-bottom: 12px; flex-wrap: wrap; }
+.panel-title { font-family: var(--font-serif); font-size: 17px; font-weight: 600; }
+.panel-kicker { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.panel-note { font-size: 13px; color: var(--muted); margin-top: 3px; max-width: 70ch; }
+.panel.claim { background: var(--surface-2); }
 .chart { position: relative; width: 100%; }
-.chart.h-64 { height: 260px; } .chart.h-56 { height: 220px; } .chart.h-48 { height: 190px; }
+.chart.h-64 { height: 270px; } .chart.h-56 { height: 230px; } .chart.h-48 { height: 200px; }
+figure { margin: 0; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
 
 /* Controls ---------------------------------------------------------------- */
-.field { display: grid; gap: 6px; margin-bottom: 12px; }
-.field-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--text-2); }
-.field-row .val { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
+.field { display: grid; gap: 4px; margin-bottom: 14px; }
+.field-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: var(--text-2); }
+.field-row .val { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); }
 .select, .input {
-  width: 100%; background: var(--surface-2); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
-  padding: 8px 10px; font-size: 13.5px; color: var(--text); outline: none;
+  width: 100%; background: var(--surface); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  padding: 7px 9px; font-size: 13.5px; color: var(--text); outline: none;
 }
-.select:focus, .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18); }
-.range { -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; margin: 0; }
+.select:focus, .input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.range { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; margin: 0; }
 .range:focus { outline: none; }
-.range::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: var(--border-2); }
-.range::-moz-range-track { height: 4px; border-radius: 4px; background: var(--border-2); }
-.range::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%;
-  background: var(--accent); border: 2px solid var(--bg); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.45);
-  cursor: pointer; transition: transform 120ms ease;
-}
-.range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); cursor: pointer; }
-.range:active::-webkit-slider-thumb { transform: scale(1.15); }
-.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); margin-bottom: 10px; cursor: pointer; }
-.toggle .t-title { font-weight: 600; font-size: 13px; }
-.toggle .t-sub { font-size: 11.5px; color: var(--muted); }
-.switch { position: relative; width: 38px; height: 22px; flex: none; }
+.range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--accent-soft); }
+.range::-webkit-slider-runnable-track { height: 2px; background: var(--border-2); }
+.range::-moz-range-track { height: 2px; background: var(--border-2); }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); cursor: pointer; }
+.range::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); cursor: pointer; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.toggle + .toggle { border-top: 1px solid var(--border); }
+.toggle:last-of-type { border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.toggle .t-title { font-size: 13px; color: var(--text); }
+.toggle .t-sub { font-size: 12px; color: var(--muted); }
+.switch { position: relative; width: 30px; height: 18px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
-.switch .knob { position: absolute; inset: 0; border-radius: 22px; background: var(--border-2); transition: background 150ms ease; }
-.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 150ms ease; }
+.switch .knob { position: absolute; inset: 0; border-radius: 18px; background: var(--border-2); transition: background 120ms ease; }
+.switch .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); transition: transform 120ms ease; }
 .switch input:checked + .knob { background: var(--accent); }
-.switch input:checked + .knob::after { transform: translateX(16px); }
-.switch input:focus-visible + .knob { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35); }
+.switch input:checked + .knob::after { transform: translateX(12px); }
+.switch input:focus-visible + .knob { box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-2);
-  background: var(--surface-2); color: var(--text); font-weight: 600; font-size: 13.5px; cursor: pointer;
-  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease, opacity 150ms ease;
-  text-decoration: none; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-2);
+  background: var(--surface); color: var(--text); font-weight: 500; font-size: 13.5px; cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease; text-decoration: none; white-space: nowrap;
 }
-.btn:hover { background: var(--surface-3); border-color: var(--muted-2); text-decoration: none; }
-.btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.55; cursor: progress; }
-.btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #06070d; border-color: transparent; box-shadow: 0 8px 24px -10px rgba(var(--accent-rgb), 0.7); }
-.btn-primary:hover { filter: brightness(1.07); background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.btn:hover { background: var(--surface-2); border-color: var(--muted-2); }
+.btn:disabled { opacity: 0.6; cursor: progress; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); border-color: var(--accent); }
 .btn-block { width: 100%; }
-.btn-sm { padding: 6px 10px; font-size: 12.5px; }
-.btn-ghost { background: transparent; }
+.btn-sm { padding: 5px 10px; font-size: 12.5px; }
+.btn-ghost { border-color: transparent; background: transparent; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: var(--radius-sm); overflow: hidden; }
-.seg button { border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
-.seg button.active { background: rgba(var(--accent-rgb), 0.18); color: var(--accent); }
+.seg button { border: 0; background: transparent; padding: 5px 10px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border-2); }
+.seg button.active { background: var(--surface-2); color: var(--text); }
 
-/* Chips & badges ---------------------------------------------------------- */
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px;
-  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.02em;
-  border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2);
-}
-.chip.accent { color: var(--accent); border-color: rgba(var(--accent-rgb), 0.4); background: rgba(var(--accent-rgb), 0.10); }
-.chip.ok { color: var(--ok); border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.10); }
-.chip.warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.10); }
-.chip.bad { color: var(--bad); border-color: rgba(251, 113, 133, 0.4); background: rgba(251, 113, 133, 0.10); }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.dot.pulse { animation: pulse 1.6s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Inline annotations (formerly pill chips): plain muted text ---------------- */
+.chip { display: inline; font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip.accent { color: var(--text-2); }
+.chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); } .chip.bad { color: var(--bad); }
+.dot { display: none; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 
 /* Misc -------------------------------------------------------------------- */
-.kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 12.5px; }
-.kv dt { color: var(--muted); } .kv dd { margin: 0; font-family: var(--font-mono); color: var(--text); text-align: right; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); white-space: nowrap; } .kv dd { margin: 0; font-family: var(--font-mono); font-size: 12.5px; color: var(--text); text-align: right; }
 .divider { height: 1px; background: var(--border); margin: 14px 0; }
-details.how { border: 1px dashed var(--border-2); border-radius: var(--radius); padding: 12px 16px; color: var(--text-2); font-size: 13.5px; }
-details.how summary { cursor: pointer; font-weight: 700; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; }
+details.how { border-top: 1px solid var(--border); padding: 20px 0 0; color: var(--text-2); font-size: 14.5px; max-width: 80ch; }
+details.how summary { cursor: pointer; font-family: var(--font-serif); font-size: 20px; font-weight: 600; color: var(--text); list-style: none; }
 details.how summary::-webkit-details-marker { display: none; }
-details.how summary::before { content: "▸"; color: var(--accent); transition: transform 150ms ease; }
-details.how[open] summary::before { transform: rotate(90deg); }
-details.how ul { margin: 8px 0 0; padding-left: 18px; }
-details.how li { margin: 4px 0; }
+details.how summary::after { content: " +"; color: var(--muted); font-weight: 400; }
+details.how[open] summary::after { content: " −"; }
+details.how ul { margin: 10px 0 0; padding-left: 18px; }
+details.how li { margin: 6px 0; }
+details.how b { color: var(--text); font-weight: 600; }
 .log {
   font-family: var(--font-mono); font-size: 12px; line-height: 1.55; color: var(--text-2);
-  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px;
-  max-height: 180px; overflow: auto; white-space: pre-wrap;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px;
+  max-height: 200px; overflow: auto; white-space: pre-wrap;
 }
-.gate-row { display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 8px 2px; }
-.gate { flex: none; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--border-2); background: var(--surface-2); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
-.gate.accent { border-color: rgba(var(--accent-rgb), 0.5); background: rgba(var(--accent-rgb), 0.12); color: var(--accent); font-weight: 600; }
+.gate-row { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 8px 2px; }
+.gate { flex: none; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-2); background: var(--surface); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+.gate.accent { border-color: var(--accent); color: var(--accent); }
 .gate.wire { border: 0; background: transparent; color: var(--muted-2); padding: 0 2px; }
-.matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.matrix .cell { background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 2px; text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.matrix { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.matrix .cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 6px 2px; text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--text); }
 .matrix .cell.dim { color: var(--muted-2); }
-.heat { display: grid; gap: 4px; }
-.heat .cell { aspect-ratio: 1.6; display: grid; place-items: center; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; border: 1px solid var(--border); }
-.site-footer { border-top: 1px solid var(--border); padding: 22px 0 32px; color: var(--muted); font-size: 12.5px; }
-.site-footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; justify-content: space-between; }
+.heat { display: grid; gap: 3px; }
+.heat .cell { aspect-ratio: 1.6; display: grid; place-items: center; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 11.5px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.data th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--border-2); padding: 6px 8px 6px 0; }
+table.data td { border-bottom: 1px solid var(--border); padding: 6px 8px 6px 0; font-family: var(--font-mono); font-size: 12.5px; }
+table.data td:first-child { font-family: var(--font-ui); font-size: 13px; }
+.site-footer { border-top: 1px solid var(--border); padding: 20px 0 32px; color: var(--muted); font-size: 13px; }
+.site-footer .wrap { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; justify-content: space-between; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.progress { height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 8px; }
+.progress { height: 2px; background: var(--border); overflow: hidden; margin-top: 10px; }
 .progress > div { height: 100%; width: 0; background: var(--accent); transition: width 120ms linear; }
+.busy { font-size: 12.5px; color: var(--muted); margin-top: 6px; min-height: 1.2em; }
 
-:root { --accent: #fb7185; --accent-2: #f9a8d4; --accent-rgb: 251, 113, 133; }
-.stream { display: grid; gap: 4px; font-family: var(--font-mono); font-size: 11.5px; }
-.stream .row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border-radius: 6px; background: var(--bg-2); border: 1px solid var(--border); }
-.stream .b { color: var(--accent); } .stream .k { color: var(--ok); }
-.heat-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.heat-title { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; text-align: center; }
+:root { --accent: #9a3b2e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent: #e3a193; } }
+:root[data-theme="dark"] { --accent: #e3a193; }
+.stream { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+.stream td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); color: var(--text-2); }
+.stream td:first-child { color: var(--muted); }
+.heat-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.heat-title { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.heat .cell { color: var(--text); }
 </style>
 </head>
 <body>
 <header class="site-header">
   <div class="wrap">
-    <div class="brand">
-      <div class="brand-mark">ρ̂</div>
-      <div>
-        <div class="brand-title">shadow-hamiltonian-learning</div>
-        <div class="brand-sub">classical shadows · derandomisation · differentiable inversion · EKF · v0.3.0</div>
-      </div>
-    </div>
+    <nav class="brand" aria-label="Breadcrumb">
+      <a href="../../index.html">Jasper Sands</a><span class="sep">/</span><span class="brand-title">shadow-hamiltonian-learning</span>
+    </nav>
     <div class="header-actions">
-      <a class="btn btn-sm btn-ghost" href="../../index.html">← Suite</a>
-      <a class="btn btn-sm" href="https://github.com/Jaspersands/shadow-hamiltonian-learning" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href="../../index.html">All projects</a>
+      <a href="https://github.com/Jaspersands/shadow-hamiltonian-learning">Source</a>
     </div>
   </div>
 </header>
 
 <main class="wrap">
   <section class="hero">
-    <h1>Learn a Hamiltonian from classical shadows</h1>
-    <p>A Heisenberg chain with unknown couplings J<sub>ij</sub> and fields h<sub>i</sub> is prepared in its Gibbs state; the page measures it with randomised or derandomised Pauli shadows (optionally with readout errors), estimates the Pauli observables, and recovers (J, h) by gradient descent through the Gibbs state — then tracks a drifting coupling with an extended Kalman filter. Nothing here is a canned curve.</p>
-    <div class="hero-row">
-      <span class="chip accent"><span class="dot"></span> 2–4 qubits, dense Gibbs states</span>
-      <span class="chip">HKP derandomisation</span>
-      <span class="chip">single-shot readout inversion</span>
-      <span id="selftest" class="chip warn"><span class="dot pulse"></span> self-test running…</span>
-    </div>
+    <h1>Learning a Hamiltonian from classical shadows</h1>
+    <p>A small Heisenberg chain with hidden couplings J<sub>ij</sub> and fields h<sub>i</sub> is prepared at finite temperature. Each measurement records one bitstring in a product Pauli basis. From enough of these snapshots we estimate the local observables, invert the thermal state to recover (J, h), and follow a coupling as it drifts. Choosing the bases deliberately rather than at random, and correcting for asymmetric readout errors, both improve the estimate.</p>
+    <p class="check" id="selftest">Running checks…</p>
   </section>
 
   <div class="layout">
     <aside class="sidebar stack">
       <div class="panel">
-        <div class="panel-kicker">01 · Hidden Hamiltonian</div>
+        <div class="panel-kicker">Hidden Hamiltonian</div>
         <div class="field">
-          <div class="field-row"><span>Qubits N</span><span class="val" id="vN">3</span></div>
+          <div class="field-row"><span>Qubits</span><span class="val" id="vN">3</span></div>
           <input id="N" class="range" type="range" min="2" max="4" step="1" value="3" />
         </div>
         <div class="field">
@@ -280,20 +282,20 @@ details.how li { margin: 4px 0; }
           <input id="beta" class="range" type="range" min="0.2" max="2.0" step="0.1" value="0.8" />
         </div>
         <div class="field">
-          <div class="field-row"><span>Random model seed</span><span class="val" id="vSeed">3</span></div>
+          <div class="field-row"><span>Model seed</span><span class="val" id="vSeed">3</span></div>
           <input id="seed" class="range" type="range" min="1" max="50" step="1" value="3" />
         </div>
         <dl class="kv" id="kvModel"></dl>
       </div>
 
       <div class="panel">
-        <div class="panel-kicker">02 · Shadow protocol</div>
+        <div class="panel-kicker">Measurements</div>
         <div class="field">
-          <div class="field-row"><span>Snapshots S</span><span class="val" id="vShots">2000</span></div>
+          <div class="field-row"><span>Snapshots</span><span class="val" id="vShots">2000</span></div>
           <input id="shots" class="range" type="range" min="200" max="8000" step="200" value="2000" />
         </div>
-        <label class="toggle"><div><div class="t-title">Derandomised bases (HKP)</div><div class="t-sub">greedy confidence-bound minimisation for the model observables</div></div><span class="switch"><input id="derand" type="checkbox" checked /><span class="knob"></span></span></label>
-        <label class="toggle"><div><div class="t-title">Readout errors + single-shot inversion</div><div class="t-sub">p(1|0), p(0|1) below; estimator uses g(b) = ((Mᵀ)⁻¹(1,−1))<sub>b</sub></div></div><span class="switch"><input id="spam" type="checkbox" checked /><span class="knob"></span></span></label>
+        <label class="toggle"><div><div class="t-title">Choose bases deliberately</div><div class="t-sub">Huang–Kueng–Preskill derandomisation for the model observables</div></div><span class="switch"><input id="derand" type="checkbox" checked /><span class="knob"></span></span></label>
+        <label class="toggle"><div><div class="t-title">Readout errors, corrected</div><div class="t-sub">Each ±1 outcome replaced by g(b) = ((Mᵀ)⁻¹(1, −1))<sub>b</sub></div></div><span class="switch"><input id="spam" type="checkbox" checked /><span class="knob"></span></span></label>
         <div class="field">
           <div class="field-row"><span>p(1|0)</span><span class="val" id="vP01">0.02</span></div>
           <input id="p01" class="range" type="range" min="0" max="0.2" step="0.01" value="0.02" />
@@ -302,71 +304,73 @@ details.how li { margin: 4px 0; }
           <div class="field-row"><span>p(0|1)</span><span class="val" id="vP10">0.08</span></div>
           <input id="p10" class="range" type="range" min="0" max="0.2" step="0.01" value="0.08" />
         </div>
-        <button id="btnRun" class="btn btn-primary btn-block">⚡ Sample shadows &amp; invert (J, h)</button>
+        <button id="btnRun" class="btn btn-primary btn-block">Measure and invert</button>
         <div class="progress"><div id="prog"></div></div>
-        <div class="btn-row" style="margin-top:10px"><button id="btnBudget" class="btn btn-sm">Error vs budget (random vs derandomised)</button><button id="btnEKF" class="btn btn-sm">Run EKF on a drifting J (2 qubits)</button></div>
+        <div class="busy" id="runStatus"></div>
+        <div class="btn-row" style="margin-top:10px"><button id="btnBudget" class="btn btn-sm">Compare basis choices</button><button id="btnEKF" class="btn btn-sm">Track a drifting coupling</button></div>
       </div>
     </aside>
 
     <section class="stack">
       <div class="stats">
-        <div class="panel stat"><div class="stat-label">‖Ĵ − J‖<sub>F</sub></div><div class="stat-value" id="sJ">—</div><div class="stat-sub" id="sJsub">Frobenius error of couplings</div></div>
-        <div class="panel stat violet"><div class="stat-label">‖ĥ − h‖</div><div class="stat-value" id="sH">—</div><div class="stat-sub" id="sHsub">field error</div></div>
-        <div class="panel stat amber"><div class="stat-label">Observable RMSE</div><div class="stat-value" id="sObs">—</div><div class="stat-sub" id="sObsSub">shadow estimates vs exact</div></div>
-        <div class="panel stat emerald"><div class="stat-label">Condition number</div><div class="stat-value" id="sCond">—</div><div class="stat-sub" id="sCondSub">identifiability (Jacobian SVD)</div></div>
+        <div class="panel stat"><div class="stat-label">Coupling error ‖Ĵ − J‖</div><div class="stat-value" id="sJ">—</div><div class="stat-sub" id="sJsub"></div></div>
+        <div class="panel stat"><div class="stat-label">Field error ‖ĥ − h‖</div><div class="stat-value" id="sH">—</div><div class="stat-sub" id="sHsub"></div></div>
+        <div class="panel stat"><div class="stat-label">Observable error (RMS)</div><div class="stat-value" id="sObs">—</div><div class="stat-sub" id="sObsSub"></div></div>
+        <div class="panel stat"><div class="stat-label">Condition number</div><div class="stat-value" id="sCond">—</div><div class="stat-sub" id="sCondSub"></div></div>
       </div>
 
       <div class="panel">
-        <div class="panel-head"><div><div class="panel-title">Couplings: true vs recovered</div><div class="panel-note">J<sub>ij</sub> on the off-diagonal, h<sub>i</sub> on the diagonal. Colour = value.</div></div><span class="chip" id="chipInv">—</span></div>
-        <div class="heat-wrap"><div><div class="heat-title">true (J, h)</div><div class="heat" id="heatTrue"></div></div><div><div class="heat-title">recovered (Ĵ, ĥ)</div><div class="heat" id="heatRec"></div></div></div>
+        <div class="panel-head"><div><div class="panel-title">True and recovered parameters</div><div class="panel-note">Couplings J<sub>ij</sub> off the diagonal, fields h<sub>i</sub> on it.</div></div><span class="chip" id="chipInv"></span></div>
+        <div class="heat-wrap"><div><div class="heat-title">True</div><div class="heat" id="heatTrue"></div></div><div><div class="heat-title">Recovered</div><div class="heat" id="heatRec"></div></div></div>
       </div>
 
       <div class="grid-2">
         <div class="panel">
-          <div class="panel-head"><div class="panel-title">Inversion convergence</div><span class="chip" id="chipLoss">—</span></div>
+          <div class="panel-head"><div class="panel-title">Inversion</div><span class="chip" id="chipLoss"></span></div>
           <div class="chart h-48"><canvas id="lossChart"></canvas></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><div class="panel-title">Snapshot stream (last 6)</div><span class="chip" id="chipStream">—</span></div>
-          <div class="stream" id="stream"></div>
+          <div class="panel-head"><div class="panel-title">Last six snapshots</div><span class="chip" id="chipStream"></span></div>
+          <table class="stream" id="stream"></table>
         </div>
       </div>
 
       <div class="grid-2">
         <div class="panel">
-          <div class="panel-head"><div><div class="panel-title">Observable RMSE vs snapshot budget</div><div class="panel-note">10 trials per point on the current model; both estimators unbiased.</div></div><span class="chip" id="chipBudget">not run</span></div>
+          <div class="panel-head"><div><div class="panel-title">Random against chosen bases</div><div class="panel-note">RMS error of the model observables, ten trials per budget. Both estimators are unbiased.</div></div><span class="chip" id="chipBudget"></span></div>
           <div class="chart h-56"><canvas id="budgetChart"></canvas></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><div><div class="panel-title">EKF tracking of a drifting J₀₁</div><div class="panel-note">one snapshot per update; J steps 0.3 → 0.8 half-way.</div></div><span class="chip" id="chipEKF">not run</span></div>
+          <div class="panel-head"><div><div class="panel-title">Tracking a drifting coupling</div><div class="panel-note">Extended Kalman filter, one snapshot per update. J₀₁ steps from 0.3 to 0.8 halfway through.</div></div><span class="chip" id="chipEKF"></span></div>
           <div class="chart h-56"><canvas id="ekfChart"></canvas></div>
         </div>
       </div>
 
       <details class="how">
-        <summary>How this page computes its numbers</summary>
+        <summary>Method</summary>
         <ul>
-          <li><b>Model.</b> H = Σ<sub>i&lt;j</sub> J<sub>ij</sub>(X<sub>i</sub>X<sub>j</sub>+Y<sub>i</sub>Y<sub>j</sub>+Z<sub>i</sub>Z<sub>j</sub>) + Σ<sub>i</sub> h<sub>i</sub>Z<sub>i</sub> as a dense 2ᴺ×2ᴺ matrix; ρ<sub>β</sub> = e<sup>−βH</sup>/Z from a Jacobi eigendecomposition.</li>
-          <li><b>Shadows.</b> Each snapshot rotates ρ into a product Pauli basis (H for X, H·S† for Y) and samples a bitstring from the diagonal; readout errors flip bits with p(1|0), p(0|1).</li>
-          <li><b>Estimators.</b> Random bases: ∏ 3(−1)<sup>b</sup>δ(W,P) averaged over all snapshots. Derandomised bases: mean of ∏(−1)<sup>b</sup> over matching snapshots. With readout errors, (−1)<sup>b</sup> → g(b) = ((Mᵀ)⁻¹(1,−1))<sub>b</sub>, unbiased for asymmetric errors.</li>
-          <li><b>Derandomisation.</b> Huang–Kueng–Preskill Algorithm 1: per shot and qubit choose the Pauli minimising Σ<sub>o</sub> e<sup>−ε²h<sub>o</sub>/2</sup>[1 − ν·1[compatible]·3<sup>−remaining</sup>](1 − ν/3<sup>w</sup>)<sup>M−m−1</sup>, ε = 0.9.</li>
-          <li><b>Inversion.</b> BFGS with central-difference gradients on Σ<sub>o</sub>(⟨o⟩<sub>ρ(J,h)</sub> − ô)²; the Python package uses JAX gradients through <code>eigh</code>. The condition number is the ratio of extreme singular values of ∂⟨o⟩/∂(J,h) at the truth.</li>
-          <li><b>EKF.</b> State (J₀₁, h₀, h₁), random-walk process noise, observation z = ±1 outcome of each compatible model observable, linearised through the Gibbs state, R = 1 − ⟨o⟩².</li>
+          <li><b>Model.</b> H = Σ<sub>i&lt;j</sub> J<sub>ij</sub>(XX + YY + ZZ)<sub>ij</sub> + Σ<sub>i</sub> h<sub>i</sub>Z<sub>i</sub> and ρ = e<sup>−βH</sup>/Z, built as dense matrices.</li>
+          <li><b>Snapshots.</b> Rotate ρ into a product Pauli basis and sample one bitstring from its diagonal. Readout errors then flip bits with probabilities p(1|0) and p(0|1).</li>
+          <li><b>Estimators.</b> Random bases: the average of ∏ 3(−1)<sup>b</sup> over snapshots whose basis matches the observable. Chosen bases: the plain mean over matching snapshots. With readout errors each (−1)<sup>b</sup> becomes g(b) = ((Mᵀ)⁻¹(1, −1))<sub>b</sub>, which is unbiased even when the two error rates differ.</li>
+          <li><b>Choosing bases.</b> Huang, Kueng and Preskill's greedy algorithm: for each snapshot and qubit, pick the Pauli that most reduces a confidence bound on the worst-estimated observable (ε = 0.9, with weights kept in log space so long runs do not underflow).</li>
+          <li><b>Inversion.</b> BFGS on Σ<sub>o</sub>(⟨o⟩<sub>ρ(J,h)</sub> − ô)² in a Web Worker. The Python package differentiates exactly through e<sup>−βH</sup>, a formula that stays finite when levels are degenerate (as they are for any SU(2)-symmetric chain). The condition number is the ratio of the largest to the smallest singular value of ∂⟨o⟩/∂(J, h) at the true parameters; a large value means some combination of parameters is hard to see.</li>
+          <li><b>Tracking.</b> The state is (J₀₁, h₀, h₁) with random-walk process noise. Each snapshot gives one ±1 outcome per compatible observable, and these outcomes are correlated. The filter makes one joint update with their exact covariance ⟨o<sub>a</sub>o<sub>b</sub>⟩ − ⟨o<sub>a</sub>⟩⟨o<sub>b</sub>⟩ and updates the covariance in Joseph form. It is a Gaussian approximation to a discrete measurement, which becomes accurate once many snapshots have been absorbed.</li>
         </ul>
       </details>
     </section>
   </div>
 </main>
 
-<footer class="site-footer"><div class="wrap"><span>shadow-hamiltonian-learning v0.3.0 · Jasper Sands · Apache-2.0</span><span class="mono">Python: Cirq · JAX · NumPy — this page: vanilla JS + Chart.js</span></div></footer>
+<footer class="site-footer"><div class="wrap"><span>shadow-hamiltonian-learning 0.3 · Jasper Sands · Apache-2.0</span><span>Python: NumPy, SciPy, optional Cirq and JAX. This page: plain JavaScript and Chart.js.</span></div></footer>
 
-<script>
+<script id="engine">
 /* ---------------------------------------------------------------------------
    qcore — tiny dense complex linear algebra + optimisers for the qvibes demos.
    Matrices are {n, m, re: Float64Array, im: Float64Array} in row-major order.
    --------------------------------------------------------------------------- */
 const Q = (() => {
   const TWO_PI = 2 * Math.PI;
+  const SUP = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
 
   function zeros(n, m = n) { return { n, m, re: new Float64Array(n * m), im: new Float64Array(n * m) }; }
   function eye(n) { const A = zeros(n); for (let i = 0; i < n; i++) A.re[i * n + i] = 1; return A; }
@@ -524,32 +528,75 @@ const Q = (() => {
 
   // ---- Chart.js theme ------------------------------------------------------------
   function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  /** A CSS colour token with alpha, e.g. alpha('--accent', 0.12). Accepts #rgb/#rrggbb tokens. */
+  function alpha(name, a) {
+    let h = css(name).replace('#', '');
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16);
+    return Number.isFinite(n) ? `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})` : css(name);
+  }
   function chartDefaults() {
     if (typeof Chart === 'undefined') return;
-    Chart.defaults.color = css('--muted'); Chart.defaults.borderColor = css('--border');
-    Chart.defaults.font.family = css('--font-mono') || 'monospace'; Chart.defaults.font.size = 11;
-    Chart.defaults.plugins.legend.labels.boxWidth = 10; Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.color = css('--muted'); Chart.defaults.borderColor = css('--grid');
+    Chart.defaults.font.family = css('--font-ui') || 'sans-serif'; Chart.defaults.font.size = 11.5;
+    Chart.defaults.plugins.legend.align = 'start';
+    Chart.defaults.plugins.legend.labels.boxWidth = 14; Chart.defaults.plugins.legend.labels.boxHeight = 2;
     Chart.defaults.plugins.legend.labels.color = css('--text-2');
-    Chart.defaults.plugins.tooltip.backgroundColor = css('--surface-3'); Chart.defaults.plugins.tooltip.titleColor = css('--text'); Chart.defaults.plugins.tooltip.bodyColor = css('--text-2'); Chart.defaults.plugins.tooltip.borderColor = css('--border-2'); Chart.defaults.plugins.tooltip.borderWidth = 1;
-    Chart.defaults.elements.point.radius = 0; Chart.defaults.elements.line.borderWidth = 2; Chart.defaults.animation = false;
+    Chart.defaults.plugins.tooltip.backgroundColor = css('--surface'); Chart.defaults.plugins.tooltip.titleColor = css('--text');
+    Chart.defaults.plugins.tooltip.bodyColor = css('--text-2'); Chart.defaults.plugins.tooltip.borderColor = css('--border-2');
+    Chart.defaults.plugins.tooltip.borderWidth = 1; Chart.defaults.plugins.tooltip.cornerRadius = 3;
+    Chart.defaults.elements.point.radius = 0; Chart.defaults.elements.line.borderWidth = 1.75; Chart.defaults.animation = false;
     Chart.defaults.responsive = true; Chart.defaults.maintainAspectRatio = false;
   }
   function axis(title, extra = {}) {
-    const base = { grid: { color: css('--border') }, ticks: { color: css('--muted'), maxTicksLimit: 8 }, title: { display: !!title, text: title, color: css('--muted') } };
+    const base = { grid: { color: css('--grid'), drawTicks: false }, border: { color: css('--border-2') },
+                   ticks: { color: css('--muted'), maxTicksLimit: 7, padding: 6 },
+                   title: { display: !!title, text: title, color: css('--muted') } };
     const out = Object.assign(base, extra);
-    if (out.type === 'logarithmic') out.ticks = Object.assign({ callback: v => { const e = Math.log10(v); return Number.isInteger(e) ? (e >= -2 && e <= 3 ? String(v) : `1e${e}`) : ''; } }, out.ticks || {}, { color: css('--muted') });
+    if (out.type === 'logarithmic') out.ticks = Object.assign({ callback: v => { const e = Math.round(Math.log10(v)); if (Math.abs(Math.log10(v) - e) > 1e-9) return ''; return e >= -2 && e <= 3 ? String(v) : '10' + String(e).split('').map(c => SUP[c] || c).join(''); } }, out.ticks || {}, { color: css('--muted') });
     return out;
   }
-  const fmt = { pct: (x, d = 3) => (100 * x).toFixed(d) + '%', sci: (x, d = 2) => x === 0 ? '0' : x.toExponential(d).replace('e', '×10^').replace('+', ''), num: (x, d = 3) => Number(x).toFixed(d) };
+  function sci(x, d = 2) {
+    if (x === 0) return '0';
+    if (!Number.isFinite(x)) return String(x);
+    const [m, e] = x.toExponential(d).split('e');
+    const exp = parseInt(e, 10);
+    if (exp >= -2 && exp <= 3) return Number(x).toPrecision(d + 1);
+    return `${m} × 10${String(exp).split('').map(c => SUP[c] || c).join('')}`;
+  }
+  const fmt = { pct: (x, d = 3) => (100 * x).toFixed(d) + '%', sci, num: (x, d = 3) => Number(x).toFixed(d) };
 
-  return { TWO_PI, zeros, eye, clone, fromRows, mul, add, scale, adj, trace, kron, expm, processFidelity, applyToVec, rz, isUnitary, eigh, bfgs, nelderMead, rng, css, chartDefaults, axis, fmt };
+  // ---- Web Workers ----------------------------------------------------------------
+  /**
+   * Run engine function ``fnName(...args, onProgress)`` in a Web Worker built from
+   * ``engineSrc`` (the page's DOM-free engine script, which includes this file), so
+   * long optimisations never block the page. Falls back to the main thread if
+   * workers are unavailable. The function must be a top-level ``function``
+   * declaration and its arguments and result must be structured-cloneable.
+   */
+  function offload(engineSrc, fnName, args = [], onProgress = null) {
+    const direct = () => new Promise(resolve => setTimeout(() => resolve(self[fnName](...args, onProgress || (() => {}))), 0));
+    let worker;
+    try {
+      const tail = '\nself.onmessage = e => { try { const r = self[e.data.fn](...e.data.args, p => self.postMessage({ progress: p })); self.postMessage({ result: r }); } catch (err) { self.postMessage({ error: String((err && err.stack) || err) }); } };';
+      worker = new Worker(URL.createObjectURL(new Blob([engineSrc, tail], { type: 'text/javascript' })));
+    } catch (e) {
+      return direct();
+    }
+    return new Promise((resolve, reject) => {
+      worker.onmessage = e => {
+        if ('progress' in e.data) { if (onProgress) onProgress(e.data.progress); return; }
+        worker.terminate();
+        if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.result);
+      };
+      worker.onerror = e => { worker.terminate(); e.preventDefault(); direct().then(resolve, reject); };
+      worker.postMessage({ fn: fnName, args });
+    });
+  }
+
+  return { TWO_PI, zeros, eye, clone, fromRows, mul, add, scale, adj, trace, kron, expm, processFidelity, applyToVec, rz, isUnitary, eigh, bfgs, nelderMead, rng, css, alpha, chartDefaults, axis, fmt, offload };
 })();
 
-</script>
-<script>
-(() => {
-'use strict';
-const $ = id => document.getElementById(id);
 const PAULI = { I: Q.eye(2), X: Q.fromRows([[0, 1], [1, 0]]), Y: Q.fromRows([[0, [0, -1]], [[0, 1], 0]]), Z: Q.fromRows([[1, 0], [0, -1]]) };
 const ROT = { X: Q.scale(Q.fromRows([[1, 1], [1, -1]]), Math.SQRT1_2), Y: Q.mul(Q.scale(Q.fromRows([[1, 1], [1, -1]]), Math.SQRT1_2), Q.fromRows([[1, 0], [0, [0, -1]]])), Z: Q.eye(2) };
 
@@ -607,80 +654,174 @@ function jacobian(n, obsMats, p, beta, eps = 1e-5) { const m = obsMats.length; c
 function singularValues(Jm) { // eigenvalues of J^T J via Jacobi on a real symmetric matrix
   const m = Jm.length, nP = Jm[0].length; const A = Q.zeros(nP); for (let a = 0; a < nP; a++) for (let b = 0; b < nP; b++) { let s = 0; for (let k = 0; k < m; k++) s += Jm[k][a] * Jm[k][b]; A.re[a * nP + b] = s; } const { w, V } = Q.eigh(A); return { sv: Array.from(w, v => Math.sqrt(Math.max(v, 0))), V }; }
 
-// ---------------------------------------------------------------- charts & UI
-Q.chartDefaults(); const C = Q.css;
-const lossChart = new Chart($('lossChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'loss', data: [], borderColor: C('--accent') }] }, options: { scales: { x: Q.axis('BFGS iteration'), y: Q.axis('', { type: 'logarithmic' }) }, plugins: { legend: { display: false } } } });
-const budgetChart = new Chart($('budgetChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'random bases', data: [], borderColor: C('--rose'), pointRadius: 4 }, { label: 'derandomised', data: [], borderColor: C('--sky'), pointRadius: 4 }, { label: '3/√S', data: [], borderColor: C('--muted-2'), borderDash: [4, 4] }] }, options: { scales: { x: Q.axis('snapshots S', { type: 'logarithmic' }), y: Q.axis('RMSE', { type: 'logarithmic' }) } } });
-const ekfChart = new Chart($('ekfChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'true J₀₁', data: [], borderColor: C('--muted'), borderDash: [4, 4] }, { label: 'EKF estimate', data: [], borderColor: C('--accent') }, { label: '±1σ', data: [], borderColor: 'rgba(251,113,133,0.25)', borderWidth: 1 }, { label: '', data: [], borderColor: 'rgba(251,113,133,0.25)', borderWidth: 1 }] }, options: { scales: { x: Q.axis('snapshot'), y: Q.axis('J₀₁') }, plugins: { legend: { labels: { filter: it => it.text !== '' } } } } });
-
-const S = { n: 3, beta: 0.8, seed: 3, shots: 2000, derand: true, spam: true, p01: 0.02, p10: 0.08, model: null, obs: null, mats: null, rho: null };
-function read() { S.n = +$('N').value; S.beta = +$('beta').value; S.seed = +$('seed').value; S.shots = +$('shots').value; S.derand = $('derand').checked; S.spam = $('spam').checked; S.p01 = +$('p01').value; S.p10 = +$('p10').value;
-  $('vN').textContent = S.n; $('vBeta').textContent = S.beta.toFixed(1); $('vSeed').textContent = S.seed; $('vShots').textContent = S.shots; $('vP01').textContent = S.p01.toFixed(2); $('vP10').textContent = S.p10.toFixed(2); }
-function heat(el, n, J, h) { el.innerHTML = ''; el.style.gridTemplateColumns = `repeat(${n}, 1fr)`; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = i === j ? h[i] : J[i][j]; const d = document.createElement('div'); d.className = 'cell'; const a = Math.min(1, Math.abs(v)); d.style.background = v >= 0 ? `rgba(251,113,133,${0.12 + 0.7 * a})` : `rgba(56,189,248,${0.12 + 0.7 * a})`; d.style.color = a > 0.35 ? '#fff' : C('--text-2'); d.textContent = v.toFixed(2); d.title = i === j ? `h${i}` : `J${i}${j}`; el.appendChild(d); } }
-function buildModel() { read(); S.model = randomModel(S.n, S.seed); S.obs = modelObservables(S.n); S.mats = S.obs.map(o => pauliString(o, S.n)); S.rho = gibbs(hamiltonian(S.n, S.model.J, S.model.h), S.beta);
-  const { sv } = singularValues(jacobian(S.n, S.mats, pack(S.n, S.model.J, S.model.h), S.beta)); const cond = sv[sv.length - 1] / Math.max(sv[0], 1e-12);
-  $('sCond').textContent = cond.toFixed(1); $('sCondSub').textContent = `σ_max/σ_min of ∂⟨o⟩/∂(J,h) · ${S.obs.length} observables, ${sv.length} parameters`;
-  const gs = Array.from(S.rho.re).filter((_, i) => i % ((1 << S.n) + 1) === 0);
-  $('kvModel').innerHTML = `<dt>couplings</dt><dd>${pairs(S.n).filter(([i, j]) => S.model.J[i][j] !== 0).map(([i, j]) => `J${i}${j}=${S.model.J[i][j].toFixed(2)}`).join(' ')}</dd><dt>fields</dt><dd>${S.model.h.map((v, i) => `h${i}=${v.toFixed(2)}`).join(' ')}</dd><dt>purity Tr ρ²</dt><dd>${Q.trace(Q.mul(S.rho, S.rho))[0].toFixed(3)}</dd><dt>observables</dt><dd>${S.obs.length}</dd>`;
-  heat($('heatTrue'), S.n, S.model.J, S.model.h); }
-async function run() {
-  buildModel(); const btn = $('btnRun'); btn.disabled = true; btn.textContent = '⏳ sampling…'; $('prog').style.width = '10%'; await new Promise(r => setTimeout(r, 10));
-  const rng = Q.rng(100 + S.seed); const bases = S.derand ? derandomize(S.obs, S.n, S.shots) : null; const readout = S.spam ? { p01: S.p01, p10: S.p10 } : null;
-  const snaps = sampleShadows(S.rho, S.n, S.shots, rng, bases, readout); const g = S.spam ? readoutG(S.p01, S.p10) : null;
-  const targets = S.obs.map(o => Math.max(-1, Math.min(1, estimate(snaps, o, S.derand, g)))); const exact = S.mats.map(M => expect(S.rho, M));
-  const rmse = Math.sqrt(targets.reduce((a, t, k) => a + (t - exact[k]) ** 2, 0) / targets.length);
-  $('sObs').textContent = rmse.toFixed(4); $('sObsSub').textContent = `${S.shots} ${S.derand ? 'derandomised' : 'random'} snapshots${S.spam ? ' · readout-corrected' : ''}`;
-  $('stream').innerHTML = snaps.slice(-6).map((s, i) => `<div class="row"><span>#${snaps.length - 6 + i + 1}</span><span class="b">bases [${s.bases.join(' ')}]</span><span class="k">bits |${s.bits.join('')}⟩</span></div>`).join(''); $('chipStream').textContent = `${new Set(snaps.map(s => s.bases.join(''))).size} distinct basis settings`;
-  $('prog').style.width = '45%'; btn.textContent = '⏳ inverting…'; await new Promise(r => setTimeout(r, 10));
-  const loss = makeLoss(S.n, S.obs, S.mats, targets, S.beta); const nP = S.mats.length ? pack(S.n, S.model.J, S.model.h).length : 0; let best = null;
+// ---------------------------------------------------------------- studies (run in a Web Worker)
+function invertStudy(cfg, onProgress) {
+  const { n, beta, seed, shots, derand, spam, p01, p10 } = cfg;
+  const model = randomModel(n, seed); const obs = modelObservables(n); const mats = obs.map(o => pauliString(o, n));
+  const rho = gibbs(hamiltonian(n, model.J, model.h), beta);
+  const rng = Q.rng(100 + seed); const bases = derand ? derandomize(obs, n, shots) : null; const readout = spam ? { p01, p10 } : null;
+  const snaps = sampleShadows(rho, n, shots, rng, bases, readout); const g = spam ? readoutG(p01, p10) : null;
+  onProgress(0.4);
+  const targets = obs.map(o => Math.max(-1, Math.min(1, estimate(snaps, o, derand, g)))); const exact = mats.map(M => expect(rho, M));
+  const loss = makeLoss(n, obs, mats, targets, beta); const nP = pack(n, model.J, model.h).length; let best = null;
   const bounds = Array.from({ length: nP }, () => [-2.5, 2.5]);
-  for (let r = 0; r < 4; r++) { const p0 = Float64Array.from({ length: nP }, () => r === 0 ? 0.05 : (rng() - 0.5)); const res = Q.bfgs(loss, p0, { maxIter: 200, tol: 1e-14, h: 1e-5, bounds }); if (!best || res.f < best.f) best = res; if (best.f < 1e-8) break; }
-  const rec = unpack(S.n, best.x); let eJ = 0, eH = 0; for (const [i, j] of pairs(S.n)) eJ += 2 * (rec.J[i][j] - S.model.J[i][j]) ** 2; eJ = Math.sqrt(eJ); eH = Math.sqrt(rec.h.reduce((a, v, i) => a + (v - S.model.h[i]) ** 2, 0));
-  $('sJ').textContent = eJ.toFixed(3); $('sJsub').textContent = `true J: ${pairs(S.n).slice(0, 3).map(([i, j]) => S.model.J[i][j].toFixed(2)).join(', ')} → ${pairs(S.n).slice(0, 3).map(([i, j]) => rec.J[i][j].toFixed(2)).join(', ')}`;
-  $('sH').textContent = eH.toFixed(3); $('sHsub').textContent = `true h: ${S.model.h.map(v => v.toFixed(2)).join(', ')} → ${rec.h.map(v => v.toFixed(2)).join(', ')}`;
-  heat($('heatRec'), S.n, rec.J, rec.h); $('chipInv').textContent = `loss ${Q.fmt.sci(best.f, 1)} · ${best.history.length} BFGS iterations`;
-  lossChart.data.labels = best.history.map((_, i) => i); lossChart.data.datasets[0].data = best.history.map(v => Math.max(v, 1e-16)); lossChart.update(); $('chipLoss').textContent = `${nP} parameters`;
-  btn.disabled = false; btn.textContent = '⚡ Sample shadows & invert (J, h)'; $('prog').style.width = '100%';
+  for (let r = 0; r < 4; r++) {
+    const p0 = Float64Array.from({ length: nP }, () => r === 0 ? 0.1 + 0.01 * rng.normal() : (rng() - 0.5));
+    const res = Q.bfgs(loss, p0, { maxIter: 200, tol: 1e-14, h: 1e-5, bounds });
+    if (!Number.isFinite(res.f)) continue;                          // a non-finite run must never win
+    if (!best || res.f < best.f) best = res;
+    onProgress(0.4 + 0.15 * (r + 1));
+    if (best.f < 1e-8) break;
+  }
+  return { model, obs, targets, exact, best: { x: Array.from(best.x), f: best.f, history: best.history },
+           lastSnaps: snaps.slice(-6), distinct: new Set(snaps.map(sn => sn.bases.join(''))).size, total: snaps.length };
 }
-async function budget() {
-  buildModel(); const btn = $('btnBudget'); btn.disabled = true; const budgets = [100, 200, 400, 800, 1600, 3200]; const exact = S.mats.map(M => expect(S.rho, M)); const rr = [], rd = [];
-  for (const B of budgets) { await new Promise(r => setTimeout(r, 5)); const bases = derandomize(S.obs, S.n, B); let ar = 0, ad = 0; const T = 10;
-    for (let t = 0; t < T; t++) { const rng = Q.rng(7000 * B + t); const sr = sampleShadows(S.rho, S.n, B, rng, null, null), sd = sampleShadows(S.rho, S.n, B, rng, bases, null);
-      ar += Math.sqrt(S.obs.reduce((a, o, k) => a + (estimate(sr, o, false, null) - exact[k]) ** 2, 0) / S.obs.length); ad += Math.sqrt(S.obs.reduce((a, o, k) => a + (estimate(sd, o, true, null) - exact[k]) ** 2, 0) / S.obs.length); }
-    rr.push(ar / T); rd.push(ad / T); budgetChart.data.labels = budgets.slice(0, rr.length); budgetChart.data.datasets[0].data = rr; budgetChart.data.datasets[1].data = rd; budgetChart.data.datasets[2].data = budgets.slice(0, rr.length).map(b => 3 / Math.sqrt(b)); budgetChart.update(); }
-  $('chipBudget').textContent = `gain at S=3200: ×${(rr[rr.length - 1] / rd[rd.length - 1]).toFixed(2)}`; btn.disabled = false;
+function modelInfo(n, beta, seed) {
+  const model = randomModel(n, seed); const obs = modelObservables(n); const mats = obs.map(o => pauliString(o, n));
+  const rho = gibbs(hamiltonian(n, model.J, model.h), beta);
+  const { sv } = singularValues(jacobian(n, mats, pack(n, model.J, model.h), beta));
+  return { model, nObs: obs.length, sv, purity: Q.trace(Q.mul(rho, rho))[0] };
 }
-async function ekf() {
-  const btn = $('btnEKF'); btn.disabled = true; read(); const n = 2, beta = 1.5, h = [0.2, -0.15]; const obs = modelObservables(n), mats = obs.map(o => pauliString(o, n)); const rng = Q.rng(11);
-  let x = new Float64Array([0, 0, 0]); let P = [[0.25, 0, 0], [0, 0.25, 0], [0, 0, 0.25]]; const q = 0.005 ** 2; const est = [], sig = [], truth = [];
-  const preds = xx => { const u = unpack(n, xx); const rho = gibbs(hamiltonian(n, u.J, u.h), beta); return mats.map(M => expect(rho, M)); };
+function budgetStudy(n, beta, seed, onProgress) {
+  const model = randomModel(n, seed); const obs = modelObservables(n); const mats = obs.map(o => pauliString(o, n));
+  const rho = gibbs(hamiltonian(n, model.J, model.h), beta); const exact = mats.map(M => expect(rho, M));
+  const budgets = [100, 200, 400, 800, 1600, 3200]; const rr = [], rd = [];
+  for (const B of budgets) {
+    const bases = derandomize(obs, n, B); let ar = 0, ad = 0; const T = 10;
+    for (let t = 0; t < T; t++) {
+      const rng = Q.rng(7000 * B + t); const sr = sampleShadows(rho, n, B, rng, null, null), sd = sampleShadows(rho, n, B, rng, bases, null);
+      ar += Math.sqrt(obs.reduce((a, o, k) => a + (estimate(sr, o, false, null) - exact[k]) ** 2, 0) / obs.length);
+      ad += Math.sqrt(obs.reduce((a, o, k) => a + (estimate(sd, o, true, null) - exact[k]) ** 2, 0) / obs.length);
+    }
+    rr.push(ar / T); rd.push(ad / T); onProgress({ budgets: budgets.slice(0, rr.length), rr: rr.slice(), rd: rd.slice() });
+  }
+  return { budgets, rr, rd };
+}
+function solveLinear(A, B) { // A m×m, B m×k (arrays of rows): Gauss–Jordan with partial pivoting
+  const m = A.length, k = B[0].length; const M = A.map((row, i) => [...row, ...B[i]]);
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    [M[c], M[piv]] = [M[piv], M[c]]; const d = M[c][c];
+    for (let j = 0; j < m + k; j++) M[c][j] /= d;
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c]; if (f) for (let j = 0; j < m + k; j++) M[r][j] -= f * M[c][j]; }
+  }
+  return M.map(row => row.slice(m));
+}
+function ekfStudy(onProgress) {
+  const n = 2, beta = 1.5, h = [0.2, -0.15]; const obs = modelObservables(n), mats = obs.map(o => pauliString(o, n)); const rng = Q.rng(11);
+  const prod = mats.map(A => mats.map(B => Q.mul(A, B)));
+  let x = [0, 0, 0]; let P = [[0.25, 0, 0], [0, 0.25, 0], [0, 0, 0.25]]; const q = 0.005 ** 2; const est = [], sig = [], truth = [];
+  const rhoOf = xx => { const u = unpack(n, xx); return gibbs(hamiltonian(n, u.J, u.h), beta); };
   const total = 2000; let rho = null;
   for (let k = 0; k < total; k++) {
     const jv = k < total / 2 ? 0.3 : 0.8; if (k % 250 === 0) rho = gibbs(hamiltonian(n, [[0, jv], [jv, 0]], h), beta);
     const snap = sampleShadows(rho, n, 1, rng, null, null)[0];
     for (let i = 0; i < 3; i++) P[i][i] += q;
-    const compat = []; obs.forEach((o, idx) => { let ok = true; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && o[qq] !== snap.bases[qq]) ok = false; if (ok) { let z = 1; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && snap.bits[qq]) z = -z; compat.push([idx, z]); } });
-    for (const [idx, z] of compat) {
-      const p0 = preds(x); const Jac = jacobian(n, mats, x, beta, 1e-4)[idx]; const r = Math.max(0.05, 1 - p0[idx] ** 2);
-      const PH = [0, 1, 2].map(i => P[i][0] * Jac[0] + P[i][1] * Jac[1] + P[i][2] * Jac[2]); const Sv = Jac[0] * PH[0] + Jac[1] * PH[1] + Jac[2] * PH[2] + r; const K = PH.map(v => v / Sv);
-      const innov = z - p0[idx]; x = Float64Array.from(x, (v, i) => v + K[i] * innov); const Pn = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { let s = 0; for (let l = 0; l < 3; l++) s += ((i === l ? 1 : 0) - K[i] * Jac[l]) * P[l][j]; Pn[i][j] = s; } P = Pn;
+    const idx = [], z = [];
+    obs.forEach((o, a) => { let ok = true; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && o[qq] !== snap.bases[qq]) ok = false; if (ok) { let v = 1; for (let qq = 0; qq < n; qq++) if (o[qq] !== 'I' && snap.bits[qq]) v = -v; idx.push(a); z.push(v); } });
+    if (idx.length) {
+      const r0 = rhoOf(x); const pred = idx.map(a => expect(r0, mats[a]));
+      const Hm = idx.map(() => [0, 0, 0]); const eps = 1e-4;
+      for (let l = 0; l < 3; l++) { const xp = x.slice(), xm = x.slice(); xp[l] += eps; xm[l] -= eps; const rp = rhoOf(xp), rm = rhoOf(xm); idx.forEach((a, i) => { Hm[i][l] = (expect(rp, mats[a]) - expect(rm, mats[a])) / (2 * eps); }); }
+      const m = idx.length;
+      const R = idx.map((a, i) => idx.map((b, j) => expect(r0, prod[a][b]) - pred[i] * pred[j] + (i === j ? 1e-3 : 0)));
+      const PHt = [0, 1, 2].map(r => Hm.map(row => row.reduce((acc, v, c) => acc + P[r][c] * v, 0)));      // 3×m
+      const Sm = Hm.map((row, i) => Hm.map((row2, j) => row.reduce((acc, v, c) => acc + v * PHt[c][j], 0) + R[i][j]));
+      const Kt = solveLinear(Sm, PHt[0].map((_, i) => [PHt[0][i], PHt[1][i], PHt[2][i]]));               // (S⁻¹ H P)ᵀ rows: m×3
+      const K = [0, 1, 2].map(r => Kt.map(row => row[r]));                                                 // 3×m
+      x = x.map((v, r) => v + K[r].reduce((acc, kv, i) => acc + kv * (z[i] - pred[i]), 0));
+      const A = [0, 1, 2].map(r => [0, 1, 2].map(c => (r === c ? 1 : 0) - K[r].reduce((acc, kv, i) => acc + kv * Hm[i][c], 0)));
+      const AP = A.map(row => [0, 1, 2].map(c => row.reduce((acc, v, l) => acc + v * P[l][c], 0)));
+      const APAt = AP.map(row => A.map(rowA => row.reduce((acc, v, l) => acc + v * rowA[l], 0)));
+      const KR = K.map(row => R[0].map((_, j) => row.reduce((acc, v, i) => acc + v * R[i][j], 0)));
+      const KRKt = KR.map(row => K.map(rowK => row.reduce((acc, v, i) => acc + v * rowK[i], 0)));
+      P = APAt.map((row, r) => row.map((v, c) => v + KRKt[r][c]));
+      P = P.map((row, r) => row.map((v, c) => 0.5 * (v + P[c][r])));                                   // Joseph form, symmetrised
     }
-    est.push(x[0]); sig.push(Math.sqrt(Math.max(P[0][0], 0))); truth.push(jv);
-    if (k % 100 === 99) { ekfChart.data.labels = est.map((_, i) => i); ekfChart.data.datasets[0].data = truth; ekfChart.data.datasets[1].data = est; ekfChart.data.datasets[2].data = est.map((v, i) => v + sig[i]); ekfChart.data.datasets[3].data = est.map((v, i) => v - sig[i]); ekfChart.update(); await new Promise(r => setTimeout(r, 0)); }
+    est.push(x[0]); sig.push(Math.sqrt(P[0][0])); truth.push(jv);
+    if (k % 100 === 99) onProgress({ est: est.slice(), sig: sig.slice(), truth: truth.slice() });
   }
-  $('chipEKF').textContent = `at 900: ${est[899].toFixed(2)} (0.30) · at 2000: ${est[1999].toFixed(2)} (0.80) · σ ${sig[1999].toFixed(2)}`; btn.disabled = false;
+  return { est, sig, truth, minEig: Math.min(...Q.eigh(Q.fromRows(P)).w) };
 }
-window.__shadow = { sampleShadows, estimate, gibbs, hamiltonian, expect, pauliString, modelObservables, derandomize, readoutG, makeLoss, unpack, pack, jacobian, singularValues, randomModel, S };
-['N', 'beta', 'seed', 'shots', 'p01', 'p10'].forEach(id => $(id).addEventListener('input', () => { read(); if (['N', 'beta', 'seed'].includes(id)) buildModel(); }));
+</script>
+<script>
+(() => {
+'use strict';
+const ENGINE = document.getElementById('engine').textContent;
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------- charts & UI
+Q.chartDefaults(); const C = Q.css;
+const lossChart = new Chart($('lossChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'loss', data: [], borderColor: C('--accent') }] }, options: { scales: { x: Q.axis('BFGS iteration'), y: Q.axis('', { type: 'logarithmic' }) }, plugins: { legend: { display: false } } } });
+const budgetChart = new Chart($('budgetChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'random', data: [], borderColor: C('--muted'), pointRadius: 3, pointBackgroundColor: C('--muted'), borderDash: [4, 3] }, { label: 'chosen', data: [], borderColor: C('--accent'), pointRadius: 3, pointBackgroundColor: C('--accent') }, { label: '3/√S', data: [], borderColor: C('--muted-2'), borderWidth: 1 }] }, options: { scales: { x: Q.axis('snapshots', { type: 'logarithmic' }), y: Q.axis('RMS error', { type: 'logarithmic' }) } } });
+const ekfChart = new Chart($('ekfChart'), { type: 'line', data: { labels: [], datasets: [{ label: 'true J₀₁', data: [], borderColor: C('--muted'), borderDash: [4, 3] }, { label: 'estimate', data: [], borderColor: C('--accent') }, { label: '±1σ', data: [], borderColor: Q.alpha('--accent', 0.35), borderWidth: 1, fill: '+1', backgroundColor: Q.alpha('--accent', 0.08) }, { label: '', data: [], borderColor: Q.alpha('--accent', 0.35), borderWidth: 1 }] }, options: { scales: { x: Q.axis('snapshot'), y: Q.axis('J₀₁') }, plugins: { legend: { labels: { filter: it => it.text !== '' } } } } });
+
+const S = { n: 3, beta: 0.8, seed: 3, shots: 2000, derand: true, spam: true, p01: 0.02, p10: 0.08, model: null, obs: null, mats: null, rho: null };
+function read() { S.n = +$('N').value; S.beta = +$('beta').value; S.seed = +$('seed').value; S.shots = +$('shots').value; S.derand = $('derand').checked; S.spam = $('spam').checked; S.p01 = +$('p01').value; S.p10 = +$('p10').value;
+  $('vN').textContent = S.n; $('vBeta').textContent = S.beta.toFixed(1); $('vSeed').textContent = S.seed; $('vShots').textContent = S.shots; $('vP01').textContent = S.p01.toFixed(2); $('vP10').textContent = S.p10.toFixed(2); }
+function heat(el, n, J, h) { el.innerHTML = ''; el.style.gridTemplateColumns = `repeat(${n}, 1fr)`; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = i === j ? h[i] : J[i][j]; const d = document.createElement('div'); d.className = 'cell'; const a = Math.min(1, Math.abs(v)); d.style.background = Q.alpha(v >= 0 ? '--rose' : '--sky', 0.08 + 0.45 * a); d.textContent = v.toFixed(2); d.title = i === j ? `h${i}` : `J${i}${j}`; el.appendChild(d); } }
+async function buildModel() {
+  read(); S.model = randomModel(S.n, S.seed);
+  heat($('heatTrue'), S.n, S.model.J, S.model.h);
+  const info = await Q.offload(ENGINE, 'modelInfo', [S.n, S.beta, S.seed]);
+  const cond = info.sv[info.sv.length - 1] / Math.max(info.sv[0], 1e-12);
+  $('sCond').textContent = cond.toFixed(1); $('sCondSub').textContent = `${info.nObs} observables, ${info.sv.length} parameters`;
+  $('kvModel').innerHTML = `<dt>Couplings</dt><dd>${pairs(S.n).filter(([i, j]) => S.model.J[i][j] !== 0).map(([i, j]) => `J${i}${j} = ${S.model.J[i][j].toFixed(2)}`).join(', ')}</dd><dt>Fields</dt><dd>${S.model.h.map((v, i) => `h${i} = ${v.toFixed(2)}`).join(', ')}</dd><dt>Purity Tr ρ²</dt><dd>${info.purity.toFixed(3)}</dd>`;
+}
+let runId = 0;
+async function run() {
+  const id = ++runId; await buildModel(); const btn = $('btnRun'); btn.disabled = true; btn.textContent = 'Working…'; $('prog').style.width = '10%'; $('runStatus').textContent = 'running in a background worker';
+  const cfg = { n: S.n, beta: S.beta, seed: S.seed, shots: S.shots, derand: S.derand, spam: S.spam, p01: S.p01, p10: S.p10 };
+  const r = await Q.offload(ENGINE, 'invertStudy', [cfg], p => { $('prog').style.width = (p * 100).toFixed(0) + '%'; });
+  if (id !== runId) return;
+  const rmse = Math.sqrt(r.targets.reduce((a, t, k) => a + (t - r.exact[k]) ** 2, 0) / r.targets.length);
+  $('sObs').textContent = rmse.toFixed(4); $('sObsSub').textContent = `${S.shots} ${S.derand ? 'chosen' : 'random'}-basis snapshots${S.spam ? ', readout corrected' : ''}`;
+  $('stream').innerHTML = r.lastSnaps.map((sn, i) => `<tr><td>${r.total - 6 + i + 1}</td><td>${sn.bases.join(' ')}</td><td>|${sn.bits.join('')}⟩</td></tr>`).join('');
+  $('chipStream').textContent = `${r.distinct} distinct basis settings`;
+  const rec = unpack(S.n, r.best.x); let eJ = 0; for (const [i, j] of pairs(S.n)) eJ += 2 * (rec.J[i][j] - S.model.J[i][j]) ** 2; eJ = Math.sqrt(eJ);
+  const eH = Math.sqrt(rec.h.reduce((a, v, i) => a + (v - S.model.h[i]) ** 2, 0));
+  $('sJ').textContent = eJ.toFixed(3); $('sJsub').textContent = `Frobenius norm over ${pairs(S.n).length} pairs`;
+  $('sH').textContent = eH.toFixed(3); $('sHsub').textContent = `true ${S.model.h.map(v => v.toFixed(2)).join(', ')}`;
+  heat($('heatRec'), S.n, rec.J, rec.h); $('chipInv').textContent = `residual ${Q.fmt.sci(r.best.f, 1)}`;
+  lossChart.data.labels = r.best.history.map((_, i) => i); lossChart.data.datasets[0].data = r.best.history.map(v => Math.max(v, 1e-16)); lossChart.update();
+  $('chipLoss').textContent = `${r.best.history.length} iterations, ${r.best.x.length} parameters`;
+  btn.disabled = false; btn.textContent = 'Measure and invert'; $('prog').style.width = '100%'; $('runStatus').textContent = '';
+}
+function showBudget(b) {
+  budgetChart.data.labels = b.budgets; budgetChart.data.datasets[0].data = b.rr; budgetChart.data.datasets[1].data = b.rd; budgetChart.data.datasets[2].data = b.budgets.map(x => 3 / Math.sqrt(x)); budgetChart.update();
+}
+async function budget() {
+  read(); const btn = $('btnBudget'); btn.disabled = true; btn.textContent = 'Running…';
+  const b = await Q.offload(ENGINE, 'budgetStudy', [S.n, S.beta, S.seed], showBudget);
+  showBudget(b);
+  $('chipBudget').textContent = `at 3200 snapshots the chosen bases are ${(b.rr[b.rr.length - 1] / b.rd[b.rd.length - 1]).toFixed(1)}× more accurate`;
+  btn.disabled = false; btn.textContent = 'Compare basis choices';
+}
+function showEKF(e) {
+  ekfChart.data.labels = e.est.map((_, i) => i); ekfChart.data.datasets[0].data = e.truth; ekfChart.data.datasets[1].data = e.est;
+  ekfChart.data.datasets[2].data = e.est.map((v, i) => v + e.sig[i]); ekfChart.data.datasets[3].data = e.est.map((v, i) => v - e.sig[i]); ekfChart.update();
+}
+async function ekf() {
+  const btn = $('btnEKF'); btn.disabled = true; btn.textContent = 'Running…';
+  const e = await Q.offload(ENGINE, 'ekfStudy', [], showEKF);
+  showEKF(e);
+  $('chipEKF').textContent = `after 900 snapshots ${e.est[899].toFixed(2)} (true 0.30), after 2000 ${e.est[1999].toFixed(2)} (true 0.80), σ = ${e.sig[1999].toFixed(2)}`;
+  btn.disabled = false; btn.textContent = 'Track a drifting coupling';
+  return e;
+}
+window.__shadow = { S, invertStudy, budgetStudy, ekfStudy };
+['N', 'beta', 'seed', 'shots', 'p01', 'p10'].forEach(id => $(id).addEventListener('input', read));
+['N', 'beta', 'seed'].forEach(id => $(id).addEventListener('change', buildModel));
 ['derand', 'spam'].forEach(id => $(id).addEventListener('change', read));
 $('btnRun').addEventListener('click', run); $('btnBudget').addEventListener('click', budget); $('btnEKF').addEventListener('click', ekf);
 
 (async () => {
   read();
-  // self-test: Bell-state shadows reproduce <ZZ> = 1 and <YY> = −1 within shot noise
+  // check: shadows of a Bell state reproduce ⟨ZZ⟩ = 1 and ⟨YY⟩ = −1 within shot noise
   const bell = Q.zeros(4); for (const [i, j] of [[0, 0], [0, 3], [3, 0], [3, 3]]) bell.re[i * 4 + j] = 0.5;
   const sn = sampleShadows(bell, 2, 3000, Q.rng(5), null, null); const zz = estimate(sn, 'ZZ', false, null), yy = estimate(sn, 'YY', false, null);
-  const ok = Math.abs(zz - 1) < 0.15 && Math.abs(yy + 1) < 0.15; const el = $('selftest'); el.className = 'chip ' + (ok ? 'ok' : 'bad'); el.innerHTML = `<span class="dot"></span> self-test ${ok ? 'passed' : 'FAILED'}: Bell ⟨ZZ⟩ = ${zz.toFixed(3)}, ⟨YY⟩ = ${yy.toFixed(3)} (3000 shots)`;
+  const ok = Math.abs(zz - 1) < 0.15 && Math.abs(yy + 1) < 0.15; const el = $('selftest'); el.className = 'check ' + (ok ? 'ok' : 'bad');
+  el.textContent = ok ? `Check passed: 3000 random-basis snapshots of a Bell state give ⟨ZZ⟩ = ${zz.toFixed(3)} and ⟨YY⟩ = ${yy.toFixed(3)} (exact values 1 and −1).` : 'Bell-state check failed.';
   await run();
 })();
 })();

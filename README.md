@@ -1,110 +1,95 @@
 # shadow-hamiltonian-learning
 
-**Classical shadows → Hamiltonian learning: randomised, derandomised and matchgate shadows, exact readout-error inversion, JAX-differentiable Gibbs-state inversion, streaming EKF tracking and shadow process tomography.**
+Classical shadows for learning and tracking the Hamiltonian of a small quantum device.
 
 [![CI](https://github.com/Jaspersands/shadow-hamiltonian-learning/actions/workflows/ci.yml/badge.svg)](https://github.com/Jaspersands/shadow-hamiltonian-learning/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Cirq](https://img.shields.io/badge/shadows-Cirq-teal.svg)](https://quantumai.google/cirq)
-[![JAX](https://img.shields.io/badge/inversion-JAX-red.svg)](https://github.com/google/jax)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-**[▶ Interactive demo](web/index.html)** — the browser builds a Gibbs state, samples Pauli shadows (random or derandomised, with optional readout error), estimates observables, inverts (J, h) by gradient descent and tracks a drifting coupling with an EKF. Every number is computed on the page.
+A classical shadow turns single-shot measurements in random bases into unbiased estimates of many observables at once. The package covers:
+- sampling shadows and choosing bases deliberately to save shots
+- correcting asymmetric readout errors exactly
+- recovering couplings from the observables of a thermal state
+- tracking drifting parameters from a stream of snapshots
+- fermionic (matchgate) shadows, and process tomography constrained to physical channels
 
----
+[Interactive page](web/index.html): shadows of a thermal Heisenberg chain in the browser, with the inversion, basis comparison and Kalman filter running in a background worker.
 
-## What it does
+## Modules
 
-| Module | Capability |
+| Module | Contents |
 |---|---|
-| `cirq_shadows` | Randomised Pauli shadows from a Cirq circuit (single simulation, then O(2ⁿ) per snapshot), `sample_shadows_from_density_matrix` (fixed or random bases, readout errors), `gibbs_state` |
-| `reconstruction` | Vectorised unbiased estimators (3ᵏ-weighted for random bases; plain means for derandomised bases), median-of-means, reduced density matrices |
-| `derandomized` | **Huang–Kueng–Preskill derandomisation** (Algorithm 1 with the confidence-bound cost) — covers every target and beats random shadows at equal budget |
-| `spam_mitigation` | Confusion-matrix inversion at the single-shot level: replaces (−1)ᵇ by g(b) = ((Mᵀ)⁻¹(1, −1))_b, unbiased for **asymmetric** readout errors |
-| `differentiable_inversion` | `DifferentiableHamiltonianLearner`: Gibbs observables of H = Σ J_ij σ_i·σ_j + Σ h_i Z_i, loss with **JAX gradients through `eigh`**, L-BFGS-B, NumPy fallback, `identifiability()` (Jacobian SVD) |
-| `kalman_tracker` | EKF over (J, h) whose observation model is the nonlinear Gibbs expectation; consumes single snapshots and tracks drift |
-| `fermionic_shadows` | Matchgate shadows (Wan et al. 2022): random signed-permutation Clifford matchgates, Majorana pair projectors, unbiased ⟨iγ_uγ_v⟩ with λ₁ = 1/(2n−1), full 1-RDM |
-| `process_tomography` | Shadow QPT: Pauli-eigenstate inputs → Pauli transfer matrix → Choi matrix, process and average gate fidelities |
-| `cli` | `shadow-learn learn | derand-compare | qpt | track | benchmark` (all `--json`) |
+| `cirq_shadows` | Pauli shadows from a Cirq circuit or a density matrix (random or given bases, optional readout errors), thermal states |
+| `reconstruction` | Unbiased estimators for random and chosen bases, median of means, reduced density matrices |
+| `derandomized` | Huang–Kueng–Preskill derandomisation with log-space weights |
+| `spam_mitigation` | Per-shot readout correction g(b) = ((Mᵀ)⁻¹(1, −1))_b, unbiased for asymmetric errors |
+| `differentiable_inversion` | Recovers (J, h) of H = Σ J_ij σ_i·σ_j + Σ h_i Z_i with exact gradients, plus an identifiability analysis |
+| `kalman_tracker` | Extended Kalman filter over (J, h) that consumes single snapshots |
+| `fermionic_shadows` | Matchgate shadows: 1- and 2-RDMs, a dense sampler for general states and a covariance-matrix sampler for Gaussian states |
+| `process_tomography` | Shadow process tomography: Pauli transfer matrix, Choi matrix, CPTP projection, fidelities |
+| `cli` | `shadow-learn learn | derand-compare | qpt | track | benchmark` |
 
-## Quickstart
+## Details that matter
+
+- **Degenerate spectra.** Any SU(2)-symmetric chain has exactly degenerate multiplets, and differentiating an eigendecomposition returns NaN there because the eigenvector derivative divides by $w_i - w_j$. The gradient here is the Fréchet derivative of $e^{-\beta H}$ in the eigenbasis. The divided difference $(e^{-\beta w_i} - e^{-\beta w_j})/(w_i - w_j)$ is replaced by its limit $-\beta e^{-\beta w_i}$ when levels coincide, so it stays exact. An optional JAX backend differentiates through `expm` and agrees to $10^{-15}$. Restarts whose loss is not finite are discarded rather than allowed to win a comparison against NaN.
+- **Identifiability.** A cold, singlet-dominated thermal state screens a uniform field, so h₀ + h₁ is nearly invisible while h₀ − h₁ and J are well determined. `identifiability()` reports the Jacobian's singular values before any fitting.
+- **The Kalman filter.** One snapshot gives correlated ±1 outcomes for all compatible observables. The update uses their exact covariance ⟨o_a o_b⟩ − ⟨o_a⟩⟨o_b⟩ and the Joseph-form covariance update. It is a Gaussian approximation to a discrete measurement; the tests check that the reported uncertainties match the actual errors.
+- **Matchgate shadows.** A product of 2k Majoranas is determined by a snapshot when it is a union of measured pairs, which happens with probability $\binom{n}{k}/\binom{2n}{2k}$. That gives unbiased 1-RDM and 2-RDM estimates, and with them the energy of any two-body fermionic Hamiltonian. For Gaussian states the sampler works on the $2n \times 2n$ covariance matrix with exact rank-2 measurement updates, so 24 modes take about a second and no $2^n$ object is built.
+- **Physical process estimates.** Linear inversion from finite data gives a Choi matrix with negative eigenvalues and fidelities above 1. By default the estimate is projected onto CPTP channels with Dykstra's algorithm, which can only reduce its distance to the true channel. Fidelities from the projection are biased low at small budgets; the raw estimate is returned too.
+
+## Examples
 
 ```python
 import numpy as np
 from shadow_learning import (
     DifferentiableHamiltonianLearner, gibbs_state, sample_shadows_from_density_matrix,
-    DerandomizedShadowSelector, estimate_many_observables, ReadoutErrorModel,
-    StreamingKalmanHamiltonianTracker, FermionicMatchgateShadows, slater_state, ShadowProcessTomographer,
+    DerandomizedShadowSelector, estimate_many_observables, ReadoutErrorModel, ShadowProcessTomographer,
 )
+from shadow_learning.fermionic_shadows import FermionicGaussianState, FermionicMatchgateShadows
 
-# 1. A Gibbs state of a 2-qubit Heisenberg chain, and shadows of it
+# Shadows of a thermal state, then inversion
 learner = DifferentiableHamiltonianLearner(n_qubits=2, beta=0.6, seed=1)
 J = np.array([[0, 0.4], [0.4, 0]]); h = np.array([0.5, -0.3])
 rho = gibbs_state(learner.build_hamiltonian_matrix(J, h), beta=0.6)
-rng = np.random.default_rng(0)
-snaps = sample_shadows_from_density_matrix(rho, 8000, rng)
-
-# 2. Differentiable inversion (JAX through eigh + L-BFGS-B)
+snaps = sample_shadows_from_density_matrix(rho, 8000, np.random.default_rng(0))
 res = learner.learn_from_shadows(snaps, true_j_matrix=J, true_h_vector=h)
-print(res.recovered_j_matrix[0, 1], res.recovered_h_vector, res.method)   # 0.400 [0.49 -0.33] jax-lbfgs
-print(learner.identifiability(J, h)["condition_number"])                   # which directions the data resolves
+print(res.recovered_j_matrix[0, 1], res.recovered_h_vector)          # about 0.42, [0.55 −0.32] (truth 0.4, [0.5 −0.3])
 
-# 3. Derandomised shadows for a fixed observable set
+# Chosen bases for a fixed set of observables
 targets = [learner.pauli_string(n) for n in learner.observable_names]
 bases = DerandomizedShadowSelector(targets, n_qubits=2).select_measurement_bases(1000)
-der = sample_shadows_from_density_matrix(rho, 1000, rng, bases=bases)
-print(estimate_many_observables(der, targets, derandomized=True))
+print(estimate_many_observables(sample_shadows_from_density_matrix(rho, 1000, np.random.default_rng(1), bases=bases),
+                                targets, derandomized=True))
 
-# 4. Asymmetric readout errors, exactly de-biased at the single-shot level
+# Asymmetric readout errors, corrected per shot
 model = ReadoutErrorModel(p01=0.02, p10=0.10)
-noisy = sample_shadows_from_density_matrix(rho, 6000, rng, readout_error=model)
+noisy = sample_shadows_from_density_matrix(rho, 6000, np.random.default_rng(2), readout_error=model)
 print(estimate_many_observables(noisy, ["ZZ"], readout_model=model))
 
-# 5. EKF over a stream of single snapshots
-tracker = StreamingKalmanHamiltonianTracker(n_qubits=2, beta=0.6, process_noise_std=0.005)
-for snap in snaps[:2000]:
-    est = tracker.process_snapshot(snap)
-print(est["J"][0, 1], est["std"])
+# A 24-mode free-fermion state from its covariance matrix
+g = FermionicGaussianState.ground_state_of_quadratic(np.diag(np.ones(23), 1) + np.diag(np.ones(23), -1), 12)
+fs = FermionicMatchgateShadows(n_modes=24, seed=0)
+print(np.abs(fs.estimate_1rdm(fs.sample(g, 3000)) - g.one_rdm()).max())
 
-# 6. Matchgate shadows → 1-RDM, and shadow process tomography
-fs = FermionicMatchgateShadows(n_modes=4, seed=3)
-print(np.round(np.diag(fs.estimate_1rdm(fs.sample(slater_state(4, [1, 3]), 4000))).real, 2))  # ≈ [0 1 0 1]
-tomo = ShadowProcessTomographer(n_qubits=1, seed=0)
+# Process tomography, projected onto physical channels
 X = np.array([[0, 1], [1, 0]], dtype=complex)
-r = tomo.run(lambda rho_in: X @ rho_in @ X, n_snapshots_per_input=1500)
-print(tomo.process_fidelity(r["ptm"], X))                                   # ≈ 1
+out = ShadowProcessTomographer(n_qubits=1, seed=0).run(lambda r: X @ r @ X, n_snapshots_per_input=1500)
+print(np.linalg.eigvalsh(out["choi_raw"]).min(), np.linalg.eigvalsh(out["choi"]).min())
 ```
 
 ```bash
 shadow-learn learn --qubits 3 --shots 6000 --derandomized --spam 0.02 0.08
-shadow-learn derand-compare --qubits 3 --shots 300
 shadow-learn qpt --channel depolarizing --p 0.2
 shadow-learn benchmark --quick
 ```
 
-## Honest notes
-
-* **Identifiability is physics, not a bug.** A singlet-dominated Gibbs state (large βJ) screens a uniform field, so h₀ + h₁ is nearly unlearnable from Pauli shadows while h₀ − h₁ and J are fine. `identifiability()` reports the Jacobian singular values so you can see it before fitting; the tutorial shows the hot (β = 0.3) vs cold (β = 1.5) case.
-* The v0.2 "derandomiser" returned the same basis for every shot (two of three targets were never measured), the "differentiable" learner used Nelder–Mead, the SPAM rule was only correct for symmetric errors, the matchgate and process-tomography modules were stubs, and the benchmark learned a Hamiltonian from a Bell state. All of that is fixed and tested in v0.3.
-* Matchgate shadows use the Clifford-matchgate (signed permutation) ensemble; only the degree-2 Majorana sector (1-RDM) is estimated. 2-RDMs need the λ₂ = C(n,2)/C(2n,4) sector and are not implemented.
-
-## Install & test
+## Install
 
 ```bash
-pip install -e ".[dev]"
-pytest -v tests/                              # 45 tests
-python benchmarks/run_shadow_benchmark.py     # budget scaling → derandomisation → SPAM → learning → EKF → 1-RDM → QPT
+pip install -e ".[dev]"          # the core needs NumPy and SciPy; Cirq and JAX are optional extras
+pytest tests/                    # 59 tests
+python benchmarks/run_shadow_benchmark.py
 ```
 
-Cirq is only needed for `ClassicalShadowsProtocol` (circuit inputs); everything else is NumPy, with JAX optional for gradients.
+The notebook [`notebooks/04_derandomized_classical_shadow_tomography.ipynb`](notebooks/04_derandomized_classical_shadow_tomography.ipynb) has executed outputs. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
-## Tutorial
-
-[`notebooks/04_derandomized_classical_shadow_tomography.ipynb`](notebooks/04_derandomized_classical_shadow_tomography.ipynb) — executed outputs included.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md).
-
-## License
-
-Apache-2.0 — Jasper Sands.
+Apache-2.0 · Jasper Sands

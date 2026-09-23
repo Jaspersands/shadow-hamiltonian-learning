@@ -34,7 +34,7 @@ from .kalman_tracker import StreamingKalmanHamiltonianTracker
 from .fermionic_shadows import FermionicMatchgateShadows, MatchgateSnapshot, majorana_operators, slater_state
 from .process_tomography import ShadowProcessTomographer, pauli_transfer_matrix_of_unitary, project_cptp
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "ClassicalShadowsProtocol", "ShadowSnapshot", "measure_random_pauli_shadows",
     "sample_shadows_from_density_matrix", "sample_shadows_from_state_vector", "gibbs_state", "basis_rotation_matrix",
