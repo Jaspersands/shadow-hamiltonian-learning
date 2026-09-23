@@ -66,7 +66,7 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
     say(f"   <X> raw {raw:.3f} | symmetric rule {raw/model.readout_fidelity:.3f} (overshoots) | single-shot inversion {mit:.3f} (truth 1)")
     out["spam"] = {"raw": raw, "mitigated": mit}
 
-    say("\n4. Hamiltonian learning from Gibbs-state shadows (2 qubits, β = 0.6, 8000 shots) — JAX L-BFGS")
+    say("\n4. Hamiltonian learning from Gibbs-state shadows (2 qubits, β = 0.6, 8000 shots) — L-BFGS, exact gradients")
     learner = DifferentiableHamiltonianLearner(n_qubits=2, beta=0.6, seed=1)
     J = np.array([[0, 0.4], [0.4, 0]]); h = np.array([0.5, -0.3])
     rho = gibbs_state(learner.build_hamiltonian_matrix(J, h), 0.6)
@@ -76,6 +76,12 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
     ident = learner.identifiability(J, h)
     say(f"   identifiability: singular values {np.round(ident['singular_values'], 3)}, condition number {ident['condition_number']:.1f}")
     out["learning"] = {"J01": float(res.recovered_j_matrix[0, 1]), "h": res.recovered_h_vector.tolist(), "iterations": res.iterations}
+    L4 = DifferentiableHamiltonianLearner(n_qubits=4, beta=1.0, seed=0)
+    J4 = np.diag([0.5, 0.5, 0.5], 1); J4 = J4 + J4.T; h4 = np.zeros(4)
+    r4 = L4.learn_from_expectations(L4.compute_thermal_observables(J4, h4), J4, h4)
+    gap = np.min(np.diff(np.linalg.eigvalsh(L4.build_hamiltonian_matrix(J4, h4))))
+    say(f"   isotropic 4-site chain (h = 0, {"exactly degenerate levels" if gap < 1e-12 else f"min level spacing {gap:.1e}"}): ‖ΔJ‖ = {r4.frobenius_error:.1e}, all gradients finite")
+    out["learning_degenerate"] = {"frobenius_error": r4.frobenius_error}
 
     say("\n5. EKF tracking a step 0.3 → 0.8 in J01 from 3000 single snapshots")
     from .kalman_tracker import StreamingKalmanHamiltonianTracker
@@ -89,19 +95,31 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
     say(f"   estimate at shot 1400: {est[1399]:+.3f} (0.3) | at 3000: {est[-1]:+.3f} (0.8)  ({time.time()-t0:.1f} s)")
     out["ekf"] = {"at_1400": est[1399], "final": est[-1]}
 
-    say("\n6. Matchgate shadows: 1-RDM of a 4-mode Slater determinant (modes 1, 3 occupied), 4000 snapshots")
-    from .fermionic_shadows import FermionicMatchgateShadows, slater_state
+    say("\n6. Matchgate shadows")
+    from .fermionic_shadows import FermionicGaussianState, FermionicMatchgateShadows, slater_state
+    n_s = 2000 if quick else 4000
     fs = FermionicMatchgateShadows(n_modes=4, seed=3)
-    t0 = time.time(); D = fs.estimate_1rdm(fs.sample(slater_state(4, [1, 3]), 2000 if quick else 4000))
-    say(f"   diag(D) = {np.round(np.diag(D).real, 3)} (0 1 0 1), max off-diagonal {np.abs(D - np.diag(np.diag(D))).max():.3f}  ({time.time()-t0:.1f} s)")
-    out["matchgate"] = {"diag": np.diag(D).real.tolist()}
+    psi = (slater_state(4, [1, 3]) + slater_state(4, [0, 2])) / np.sqrt(2)
+    t0 = time.time(); snaps = fs.sample(psi, 4 * n_s)
+    e1 = np.abs(fs.estimate_1rdm(snaps) - fs.exact_1rdm(psi)).max(); e2 = np.abs(fs.estimate_2rdm(snaps) - fs.exact_2rdm(psi)).max()
+    say(f"   non-Gaussian 4-mode state, {4*n_s} snapshots: max |ΔD1| = {e1:.3f}, max |ΔD2| = {e2:.3f}  ({time.time()-t0:.1f} s)")
+    hq = rng.normal(size=(24, 24)); g24 = FermionicGaussianState.ground_state_of_quadratic(hq + hq.T, 12)
+    fs24 = FermionicMatchgateShadows(n_modes=24, seed=0)
+    t0 = time.time(); D24 = fs24.estimate_1rdm(fs24.sample(g24, n_s))
+    say(f"   24-mode Gaussian state (covariance sampler, no 2^24 object), {n_s} snapshots: max |ΔD1| = {np.abs(D24 - g24.one_rdm()).max():.3f}  ({time.time()-t0:.1f} s)")
+    out["matchgate"] = {"err_1rdm": e1, "err_2rdm": e2, "err_1rdm_24_modes": float(np.abs(D24 - g24.one_rdm()).max())}
 
     say("\n7. Shadow QPT of a depolarising channel p = 0.2 (1 qubit, 1500 snapshots per input)")
     from .process_tomography import ShadowProcessTomographer
     tomo = ShadowProcessTomographer(1, seed=1)
     r = tomo.run(lambda x: 0.8 * x + 0.2 * np.trace(x) * np.eye(2) / 2, n_snapshots_per_input=1500)
     say(f"   PTM diagonal {np.round(np.diag(r['ptm']), 3)} (1, 0.8, 0.8, 0.8)  F_avg vs identity {tomo.average_gate_fidelity(r['ptm'], np.eye(2)):.3f} (exact {(2*0.85+1)/3:.3f})")
-    out["qpt"] = {"ptm_diag": np.diag(r["ptm"]).tolist()}
+    CZ = np.diag([1, 1, 1, -1]).astype(complex)
+    tomo2 = ShadowProcessTomographer(2, seed=0)
+    r2 = tomo2.run(lambda x: 0.9 * CZ @ x @ CZ + 0.1 * np.trace(x) * np.eye(4) / 4, n_snapshots_per_input=300)
+    say(f"   2-qubit noisy CZ, 300 snapshots/input: linear inversion min eig(J) = {np.linalg.eigvalsh(r2['choi_raw']).min():+.3f} (unphysical), "
+        f"CPTP projection min eig = {max(np.linalg.eigvalsh(r2['choi']).min(), 0.0):.3f}")
+    out["qpt"] = {"ptm_diag": np.diag(r["ptm"]).tolist(), "raw_min_eig": float(np.linalg.eigvalsh(r2["choi_raw"]).min())}
     say("=" * 72)
     if as_json:
         print(json.dumps(out, indent=2, default=float))

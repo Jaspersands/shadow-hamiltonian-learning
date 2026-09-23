@@ -32,7 +32,7 @@ from .spam_mitigation import SPAMNoiseMitigator, ReadoutErrorModel
 from .derandomized import DerandomizedShadowSelector, hits_per_observable
 from .kalman_tracker import StreamingKalmanHamiltonianTracker
 from .fermionic_shadows import FermionicMatchgateShadows, MatchgateSnapshot, majorana_operators, slater_state
-from .process_tomography import ShadowProcessTomographer, pauli_transfer_matrix_of_unitary
+from .process_tomography import ShadowProcessTomographer, pauli_transfer_matrix_of_unitary, project_cptp
 
 __version__ = "0.3.0"
 __all__ = [

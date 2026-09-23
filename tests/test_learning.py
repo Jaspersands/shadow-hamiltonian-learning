@@ -61,7 +61,7 @@ def test_learn_from_exact_expectations_recovers_parameters():
     assert abs(res.recovered_j_matrix[0, 1] - 0.75) < 1e-3
     assert np.allclose(res.recovered_h_vector, TRUE_H, atol=2e-3)
     assert res.frobenius_error < 2e-3 and res.final_loss < 1e-6
-    assert res.method in ("jax-lbfgs", "numpy-lbfgs")
+    assert res.method == "analytic-lbfgs"
 
 
 def test_learn_from_gibbs_shadows_end_to_end():
@@ -101,13 +101,15 @@ def test_shadow_inversion_in_a_well_conditioned_regime():
     assert np.allclose(res.recovered_h_vector, h, atol=0.12)
 
 
-def test_numpy_fallback_path(monkeypatch):
+def test_analytic_path_needs_no_jax(monkeypatch):
     monkeypatch.setattr(di, "HAS_JAX", False)
     learner = DifferentiableHamiltonianLearner(n_qubits=2, beta=1.0, seed=0)
     targets = learner.compute_thermal_observables(TRUE_J, TRUE_H)
     res = learner.learn_from_expectations(targets)
-    assert res.method == "numpy-lbfgs"
+    assert res.method == "analytic-lbfgs"
     assert abs(res.recovered_j_matrix[0, 1] - 0.75) < 1e-3
+    with pytest.raises(ImportError):
+        learner.loss_and_grad(learner.pack(TRUE_J, TRUE_H), targets, backend="jax")
 
 
 def test_ekf_tracks_a_step_change_in_coupling():

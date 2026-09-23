@@ -68,7 +68,7 @@ def test_cli_learn_and_qpt(capsys):
     import json
     assert cli_main(["learn", "--qubits", "2", "--shots", "600", "--beta", "0.6", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["method"] in ("jax-lbfgs", "numpy-lbfgs") and "recovered_J" in out
+    assert out["method"] in ("analytic-lbfgs", "jax-lbfgs") and "recovered_J" in out
     assert cli_main(["qpt", "--channel", "x", "--shots", "300", "--json"]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["process_fidelity"] > 0.7

@@ -11,9 +11,23 @@ observables, (J, h) is recovered by minimising
 
     L(J, h) = Σ_o (⟨o⟩_ρ(J,h) − ô)² + λ ‖(J, h)‖²
 
-with **analytic gradients through the eigendecomposition** (JAX ``eigh``) and
-L-BFGS-B. Without JAX the same loss is minimised with central-difference
-gradients. (v0.2 used derivative-free Nelder–Mead.)
+with L-BFGS-B and exact gradients.
+
+Gradients
+---------
+Heisenberg spectra are degenerate (SU(2) multiplets, and further accidental
+degeneracies at symmetric couplings), so differentiating an eigendecomposition
+is not an option: the eigenvector derivative contains 1/(w_i − w_j) and
+returns NaN exactly where the model is most symmetric. Two degeneracy-safe
+routes are provided and agree to ~1e-10:
+
+* ``backend="analytic"`` (default) — the Fréchet derivative of e^{−βH} in the
+  eigenbasis, [V†·d(e^{−βH})·V]_ij = f[w_i, w_j]·[V†·dH·V]_ij, with the divided
+  difference f[w_i, w_j] = (e^{−βw_i} − e^{−βw_j})/(w_i − w_j) replaced by its
+  limit −β e^{−βw_i} when w_i ≈ w_j. This yields the full observable Jacobian
+  in one pass.
+* ``backend="jax"`` — reverse-mode autodiff through ``jax.scipy.linalg.expm``
+  (the spectral shift that prevents overflow is held outside the gradient).
 """
 
 from __future__ import annotations
@@ -58,7 +72,7 @@ class HamiltonianLearningResult:
     iterations: int
     matched_observables: Dict[str, float]
     predicted_observables: Dict[str, float]
-    method: str = "jax-lbfgs"
+    method: str = "analytic-lbfgs"
     h_error: float = 0.0
 
     @property
@@ -90,7 +104,9 @@ class DifferentiableHamiltonianLearner:
         self._coupling_mats = np.stack([sum(self.pauli_matrix(self._pair_string(i, j, p)) for p in "XYZ") for i, j in self.pairs]) if self.pairs else np.zeros((0, 2**self.n_qubits, 2**self.n_qubits), dtype=complex)
         self._field_mats = np.stack([self.pauli_matrix(self.pauli_string(f"Z_{i}")) for i in range(self.n_qubits)])
         self.pauli_basis_matrices = {n: self._obs_mats[k] for k, n in enumerate(self.observable_names)}  # v0.2 name
-        self._jax_value_and_grad = self._build_jax() if HAS_JAX else None
+        self._jax_value_and_grad = None
+        # Pauli-basis vectors of the generators ∂H/∂p_l, used by the analytic Jacobian
+        self._generators = np.concatenate([self._coupling_mats, self._field_mats], axis=0)
 
     # ----------------------------------------------------------------- #
     # naming / matrices
@@ -132,20 +148,43 @@ class DifferentiableHamiltonianLearner:
     # ----------------------------------------------------------------- #
     # forward model
     # ----------------------------------------------------------------- #
+    def hamiltonian_from_params(self, p: np.ndarray) -> np.ndarray:
+        p = np.asarray(p, dtype=float)
+        return np.tensordot(p, self._generators, axes=(0, 0))
+
     def gibbs_observables(self, p: np.ndarray) -> np.ndarray:
-        J, h = self.unpack(p)
-        rho = gibbs_state(self.build_hamiltonian_matrix(J, h), self.beta)
+        """⟨o_k⟩ in the Gibbs state of H(p), for every model observable."""
+        w, V = np.linalg.eigh(self.hamiltonian_from_params(p))
+        e = np.exp(-self.beta * (w - w[0]))
+        rho = (V * (e / e.sum())) @ V.conj().T
         return np.real(np.einsum("kij,ji->k", self._obs_mats, rho))
 
-    def jacobian(self, p: np.ndarray, eps: float = 1e-5) -> np.ndarray:
-        """∂⟨o_k⟩/∂p_l of the Gibbs observables (central differences)."""
-        p = np.asarray(p, dtype=float)
-        J = np.zeros((len(self.observable_names), len(p)))
-        for l in range(len(p)):
-            pp = p.copy(); pp[l] += eps
-            pm = p.copy(); pm[l] -= eps
-            J[:, l] = (self.gibbs_observables(pp) - self.gibbs_observables(pm)) / (2 * eps)
-        return J
+    def gibbs_observables_and_jacobian(self, p: np.ndarray, degeneracy_tol: float = 1e-9) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Observables ⟨o_k⟩ and the exact Jacobian ∂⟨o_k⟩/∂p_l (see module docstring).
+        Well defined at degenerate spectra.
+        """
+        w, V = np.linalg.eigh(self.hamiltonian_from_params(p))
+        b = self.beta
+        e = np.exp(-b * (w - w[0]))
+        Z = e.sum()
+        dw = w[:, None] - w[None, :]
+        de = e[:, None] - e[None, :]
+        close = np.abs(dw) < degeneracy_tol
+        D = np.where(close, -b * 0.5 * (e[:, None] + e[None, :]), de / np.where(close, 1.0, dw))
+        Vh = V.conj().T
+        O_t = np.einsum("ai,kab,bj->kij", V.conj(), self._obs_mats, V, optimize=True)      # V† O V
+        G_t = np.einsum("ai,lab,bj->lij", V.conj(), self._generators, V, optimize=True)    # V† ∂H V
+        obs = np.real(np.einsum("kii,i->k", O_t, e)) / Z
+        dE = D[None] * G_t                                     # V† d(e^{−βH}) V, per parameter
+        dtrOE = np.real(np.einsum("kji,lij->kl", O_t, dE, optimize=True))
+        dZ = np.real(np.einsum("lii->l", dE))
+        jac = (dtrOE - obs[:, None] * dZ[None, :]) / Z
+        return obs, jac
+
+    def jacobian(self, p: np.ndarray, eps: Optional[float] = None) -> np.ndarray:
+        """∂⟨o_k⟩/∂p_l of the Gibbs observables (exact; ``eps`` is ignored, kept for v0.2 callers)."""
+        return self.gibbs_observables_and_jacobian(p)[1]
 
     def identifiability(self, j_matrix: np.ndarray, h_vec: np.ndarray) -> Dict[str, np.ndarray]:
         """
@@ -163,39 +202,39 @@ class DifferentiableHamiltonianLearner:
         return {n: float(v) for n, v in zip(self.observable_names, vals)}
 
     def _build_jax(self):
-        coup = jnp.asarray(self._coupling_mats)
-        fields = jnp.asarray(self._field_mats)
+        from jax.scipy.linalg import expm
+
+        gens = jnp.asarray(self._generators)
         obs = jnp.asarray(self._obs_mats)
-        beta, n_pairs, lam = self.beta, len(self.pairs), self.l2_reg
+        beta, lam = self.beta, self.l2_reg
+        eye = jnp.eye(gens.shape[1])
 
         def loss(p, targets):
-            H = jnp.tensordot(p[:n_pairs], coup, axes=(0, 0)) + jnp.tensordot(p[n_pairs:], fields, axes=(0, 0))
-            w, v = jnp.linalg.eigh(H)
-            weights = jnp.exp(-beta * (w - jnp.min(w)))
-            weights = weights / jnp.sum(weights)
-            rho = (v * weights) @ jnp.conj(v).T
+            H = jnp.tensordot(p, gens, axes=(0, 0))
+            shift = jax.lax.stop_gradient(jnp.linalg.eigvalsh(H)[0])   # overflow guard; cancels in ρ
+            E = expm(-beta * (H - shift * eye))
+            rho = E / jnp.real(jnp.trace(E))
             preds = jnp.real(jnp.einsum("kij,ji->k", obs, rho))
             return jnp.sum((preds - targets) ** 2) + lam * jnp.sum(p**2)
 
         return jax.jit(jax.value_and_grad(loss))
 
-    def loss_and_grad(self, p: np.ndarray, targets) -> Tuple[float, np.ndarray]:
+    def loss_and_grad(self, p: np.ndarray, targets, backend: str = "analytic") -> Tuple[float, np.ndarray]:
+        """Loss and its exact gradient. ``backend`` is ``"analytic"`` or ``"jax"``."""
         t = np.asarray([targets[n] for n in self.observable_names], dtype=float) if isinstance(targets, dict) else np.asarray(targets, dtype=float)
         p = np.asarray(p, dtype=float)
-        if HAS_JAX and self._jax_value_and_grad is not None:
+        if backend == "jax":
+            if not HAS_JAX:
+                raise ImportError("backend='jax' needs JAX installed")
+            if self._jax_value_and_grad is None:
+                self._jax_value_and_grad = self._build_jax()
             v, g = self._jax_value_and_grad(jnp.asarray(p), jnp.asarray(t))
             return float(v), np.asarray(g, dtype=float)
-
-        def f(q):
-            return float(np.sum((self.gibbs_observables(q) - t) ** 2) + self.l2_reg * np.sum(q**2))
-
-        base = f(p)
-        g = np.zeros_like(p)
-        for i in range(len(p)):
-            pp = p.copy(); pp[i] += 1e-6
-            pm = p.copy(); pm[i] -= 1e-6
-            g[i] = (f(pp) - f(pm)) / 2e-6
-        return base, g
+        if backend != "analytic":
+            raise ValueError(f"unknown backend {backend!r}")
+        obs, jac = self.gibbs_observables_and_jacobian(p)
+        r = obs - t
+        return float(r @ r + self.l2_reg * p @ p), 2.0 * (jac.T @ r) + 2.0 * self.l2_reg * p
 
     # ----------------------------------------------------------------- #
     # learning
@@ -207,25 +246,38 @@ class DifferentiableHamiltonianLearner:
         true_h_vector: Optional[np.ndarray] = None,
         max_iter: int = 300,
         n_restarts: int = 3,
+        backend: str = "analytic",
     ) -> HamiltonianLearningResult:
         """Recover (J, h) from a dict of observable expectation values."""
         t = np.asarray([targets[n] for n in self.observable_names], dtype=float)
         best = None
         for r in range(int(n_restarts)):
-            p0 = self.rng.uniform(-0.5, 0.5, size=self.n_params) if r > 0 else np.zeros(self.n_params) + 0.05
+            # restart 0: a small generic point; later restarts: uniform in [−0.5, 0.5]
+            p0 = self.rng.uniform(-0.5, 0.5, size=self.n_params) if r > 0 else 0.1 + 0.01 * self.rng.standard_normal(self.n_params)
             hist: List[float] = []
 
             def objective(p):
-                v, g = self.loss_and_grad(p, t)
+                if not np.all(np.isfinite(p)):
+                    return np.inf, np.zeros_like(p)
+                try:
+                    v, g = self.loss_and_grad(p, t, backend=backend)
+                except np.linalg.LinAlgError:
+                    return np.inf, np.zeros_like(p)
+                if not (np.isfinite(v) and np.all(np.isfinite(g))):
+                    return np.inf, np.zeros_like(p)
                 hist.append(v)
                 return v, g
 
             res = scipy.optimize.minimize(objective, p0, method="L-BFGS-B", jac=True,
                                           options={"maxiter": int(max_iter), "ftol": 1e-15, "gtol": 1e-12})
+            if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
+                continue                      # never let a non-finite run win (NaN < x is always False)
             if best is None or res.fun < best[0].fun:
                 best = (res, hist)
             if res.fun < 1e-12:
                 break
+        if best is None:
+            raise RuntimeError("every restart produced a non-finite loss; check the targets and β")
         res, hist = best
         J, h = self.unpack(res.x)
         preds = self.compute_thermal_observables(J, h)
@@ -234,7 +286,7 @@ class DifferentiableHamiltonianLearner:
             frobenius_error=float(np.linalg.norm(J - true_j_matrix)) if true_j_matrix is not None else 0.0,
             h_error=float(np.linalg.norm(h - true_h_vector)) if true_h_vector is not None else 0.0,
             loss_history=hist, iterations=len(hist), matched_observables=dict(zip(self.observable_names, t.tolist())),
-            predicted_observables=preds, method="jax-lbfgs" if (HAS_JAX and self._jax_value_and_grad is not None) else "numpy-lbfgs",
+            predicted_observables=preds, method=f"{backend}-lbfgs",
         )
 
     def learn_from_shadows(
@@ -245,12 +297,13 @@ class DifferentiableHamiltonianLearner:
         max_iter: int = 300,
         derandomized: bool = False,
         readout_model=None,
+        backend: str = "analytic",
     ) -> HamiltonianLearningResult:
         """Estimate the model observables from shadows, then invert."""
         targets = {n: estimate_pauli_string_expectation(snapshots, self.pauli_string(n), derandomized=derandomized, readout_model=readout_model)
                    for n in self.observable_names}
         targets = {n: float(np.clip(v, -1.0, 1.0)) for n, v in targets.items()}
-        return self.learn_from_expectations(targets, true_j_matrix, true_h_vector, max_iter=max_iter)
+        return self.learn_from_expectations(targets, true_j_matrix, true_h_vector, max_iter=max_iter, backend=backend)
 
 
 def learn_hamiltonian_from_shadows(

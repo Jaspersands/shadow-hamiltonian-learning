@@ -11,6 +11,21 @@ Pauli transfer matrix
 
 from which the Choi matrix, the process fidelity F_pro = Tr(R_Uᵀ R)/d² against
 a target unitary and the average gate fidelity (d F_pro + 1)/(d + 1) follow.
+
+Physicality
+-----------
+Linear inversion from finite data is unbiased but not physical: shot noise
+routinely gives a Choi matrix with negative eigenvalues and F_pro > 1. By
+default the estimate is therefore projected onto the CPTP set — the
+intersection of the PSD cone {J ⪰ 0} and the affine set {Tr_out J = 1} — in
+Frobenius norm, using Dykstra's alternating-projection algorithm (which
+converges to the exact projection onto an intersection of convex sets, unlike
+plain alternation). Because the true channel lies in that convex set, the
+projection can only move the estimate closer to it:
+‖Π(Ĵ) − J‖_F ≤ ‖Ĵ − J‖_F. The price is the usual one for constrained
+estimators: fidelities computed from Π(Ĵ) are biased low at small budgets
+(a pure target sits on the boundary of the set), while the raw estimate is
+unbiased but can exceed 1. Both are returned; they agree as the budget grows.
 """
 
 from __future__ import annotations
@@ -72,10 +87,13 @@ class ShadowProcessTomographer:
         self._mats = [pauli_matrix(s) for s in self.labels]
 
     # ----------------------------------------------------------------- #
-    def run(self, channel: Callable[[np.ndarray], np.ndarray], n_snapshots_per_input: int = 1000) -> Dict[str, np.ndarray]:
+    def run(self, channel: Callable[[np.ndarray], np.ndarray], n_snapshots_per_input: int = 1000,
+            physical: bool = True) -> Dict[str, np.ndarray]:
         """
         ``channel`` maps a density matrix to a density matrix. Returns
-        ``{"ptm", "choi", "inputs", "output_expectations"}``.
+        ``{"ptm", "choi", "ptm_raw", "choi_raw", "inputs", "output_expectations"}``;
+        with ``physical=True`` (default) ``ptm``/``choi`` are the CPTP projection
+        and ``*_raw`` the linear-inversion estimate.
         """
         labels_1q = list(_EIGENSTATES)
         out_exp: Dict[tuple, np.ndarray] = {}
@@ -97,7 +115,21 @@ class ShadowProcessTomographer:
                     R[:, j] += coeff * vec
         # out_exp holds Tr(P_i E(ρ)); E(P_j) = Σ c·E(ρ) gives Tr(P_i E(P_j)) = Σ c·Tr(P_i E(ρ)); R needs the 1/d.
         R /= self.dim
-        return {"ptm": R, "choi": self.choi_matrix(R), "inputs": list(out_exp.keys()), "output_expectations": out_exp}
+        J_raw = self.choi_matrix(R)
+        J = project_cptp(J_raw) if physical else J_raw
+        return {"ptm": self.ptm_from_choi(J) if physical else R, "choi": J, "ptm_raw": R, "choi_raw": J_raw,
+                "inputs": list(out_exp.keys()), "output_expectations": out_exp}
+
+    def ptm_from_choi(self, J: np.ndarray) -> np.ndarray:
+        """R_ij = Tr(P_i E(P_j))/d with E(X)_ab = Σ_ij X_ij J[(i,a),(j,b)]."""
+        d = self.dim
+        Jr = np.asarray(J).reshape(d, d, d, d)          # [i_in, a_out, j_in, b_out]
+        R = np.zeros((d * d, d * d))
+        for j, Pj in enumerate(self._mats):
+            out = np.einsum("ij,iajb->ab", Pj, Jr)
+            for i, Pi in enumerate(self._mats):
+                R[i, j] = np.real(np.trace(Pi @ out)) / d
+        return R
 
     # ----------------------------------------------------------------- #
     def choi_matrix(self, R: np.ndarray) -> np.ndarray:
@@ -115,6 +147,12 @@ class ShadowProcessTomographer:
                 J += np.kron(Eij, out)
         return J
 
+    def is_physical(self, J: np.ndarray, tol: float = 1e-8) -> bool:
+        """CP (J ⪰ 0) and TP (Tr_out J = 1) to within ``tol``."""
+        d = self.dim
+        tp = np.einsum("iaja->ij", np.asarray(J).reshape(d, d, d, d))
+        return bool(np.linalg.eigvalsh(0.5 * (J + J.conj().T)).min() >= -tol and np.allclose(tp, np.eye(d), atol=tol))
+
     def process_fidelity(self, R: np.ndarray, target_unitary: np.ndarray) -> float:
         R_u = pauli_transfer_matrix_of_unitary(target_unitary)
         return float(np.trace(R_u.T @ R) / self.dim**2)
@@ -127,3 +165,43 @@ class ShadowProcessTomographer:
         z = estimate_pauli_string_expectation(shadows_input_0, "Z" * self.n_qubits)
         x = estimate_pauli_string_expectation(shadows_input_plus, "X" * self.n_qubits)
         return float(np.clip(0.5 * (z + x), 0.0, 1.0))
+
+
+# --------------------------------------------------------------------------- #
+# CPTP projection
+# --------------------------------------------------------------------------- #
+def _project_psd(J: np.ndarray) -> np.ndarray:
+    H = 0.5 * (J + J.conj().T)
+    w, V = np.linalg.eigh(H)
+    return (V * np.clip(w, 0.0, None)) @ V.conj().T
+
+
+def _project_tp(J: np.ndarray, d: int) -> np.ndarray:
+    """Frobenius projection onto {J : Tr_out J = 1_d} (Choi ordering in ⊗ out)."""
+    Jr = J.reshape(d, d, d, d)
+    T = np.einsum("iaja->ij", Jr)                         # Tr_out J
+    corr = (T - np.eye(d)) / d
+    return J - np.kron(corr, np.eye(d))
+
+
+def project_cptp(J: np.ndarray, max_iter: int = 5000, tol: float = 1e-12) -> np.ndarray:
+    """
+    Frobenius-nearest CPTP Choi matrix to ``J`` (Dykstra's algorithm on the
+    PSD cone ∩ trace-preserving affine set).
+    """
+    J = np.asarray(J, dtype=np.complex128)
+    d = int(round(np.sqrt(J.shape[0])))
+    x = 0.5 * (J + J.conj().T)
+    p = np.zeros_like(x)
+    q = np.zeros_like(x)
+    for _ in range(int(max_iter)):
+        y = _project_tp(x + p, d)
+        p = x + p - y
+        x_new = _project_psd(y + q)
+        q = y + q - x_new
+        if np.linalg.norm(x_new - x) < tol:
+            x = x_new
+            break
+        x = x_new
+    # the PSD iterate is exactly CP; remove the residual TP error (≲ tol) without leaving the cone
+    return _project_tp(x, d) if np.linalg.eigvalsh(_project_tp(x, d)).min() >= -1e-12 else x

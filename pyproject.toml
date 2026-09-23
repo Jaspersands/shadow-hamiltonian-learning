@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "shadow-hamiltonian-learning"
 version = "0.3.0"
-description = "Classical shadows: randomised, derandomised and matchgate shadows, readout mitigation, JAX-differentiable Hamiltonian learning, EKF tracking and shadow process tomography"
+description = "Classical shadows: randomised, derandomised and matchgate shadows, readout mitigation, Hamiltonian learning with exact gradients, EKF tracking and shadow process tomography"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -15,18 +15,18 @@ authors = [
 dependencies = [
     "numpy>=1.24.0",
     "scipy>=1.10.0",
-    "cirq>=1.3.0",
-    "pennylane>=0.35.0",
-    "jax>=0.4.0",
-    "jaxlib>=0.4.0",
-    "matplotlib>=3.7.0",
 ]
 
 [project.scripts]
 shadow-learn = "shadow_learning.cli:main"
 
 [project.optional-dependencies]
+cirq = ["cirq-core>=1.3.0"]            # ClassicalShadowsProtocol (circuit inputs)
+jax = ["jax>=0.4.0"]                   # backend="jax" gradients
+notebooks = ["matplotlib>=3.7.0", "jupyter"]
 dev = [
+    "cirq-core>=1.3.0",
+    "jax>=0.4.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
 ]
