@@ -27,7 +27,7 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
         (log.append(msg) if log is not None else print(msg))
 
     say("=" * 72)
-    say("CLASSICAL SHADOWS → HAMILTONIAN LEARNING BENCHMARK (v0.4)")
+    say("CLASSICAL SHADOWS AND HAMILTONIAN LEARNING BENCHMARK (v0.5)")
     say("=" * 72)
     rng = np.random.default_rng(42)
 
@@ -80,7 +80,8 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
     J4 = np.diag([0.5, 0.5, 0.5], 1); J4 = J4 + J4.T; h4 = np.zeros(4)
     r4 = L4.learn_from_expectations(L4.compute_thermal_observables(J4, h4), J4, h4)
     gap = np.min(np.diff(np.linalg.eigvalsh(L4.build_hamiltonian_matrix(J4, h4))))
-    say(f"   isotropic 4-site chain (h = 0, {"exactly degenerate levels" if gap < 1e-12 else f"min level spacing {gap:.1e}"}): ‖ΔJ‖ = {r4.frobenius_error:.1e}, all gradients finite")
+    levels = "exactly degenerate levels" if gap < 1e-12 else f"min level spacing {gap:.1e}"
+    say(f"   isotropic 4-site chain (h = 0, {levels}): ‖ΔJ‖ = {r4.frobenius_error:.1e}, all gradients finite")
     out["learning_degenerate"] = {"frobenius_error": r4.frobenius_error}
 
     say("\n5. EKF tracking a step 0.3 → 0.8 in J01 from 3000 single snapshots")
@@ -120,6 +121,21 @@ def run_shadow_benchmark(as_json: bool = False, quick: bool = False) -> int:
     say(f"   2-qubit noisy CZ, 300 snapshots/input: linear inversion min eig(J) = {np.linalg.eigvalsh(r2['choi_raw']).min():+.3f} (unphysical), "
         f"CPTP projection min eig = {max(np.linalg.eigvalsh(r2['choi']).min(), 0.0):.3f}")
     out["qpt"] = {"ptm_diag": np.diag(r["ptm"]).tolist(), "raw_min_eig": float(np.linalg.eigvalsh(r2["choi_raw"]).min())}
+
+    say("\n8. Rydberg quench: 6-atom chain at 8 μm, Ω = 12, Δ = 5 rad/μs, Aquila readout errors, "
+        "8 pulses of 0.5–4 μs with 0.05 μs Ω ramps × 200 shots")
+    from .rydberg import AQUILA, RydbergQuenchModel, chain
+    ryd = RydbergQuenchModel(chain(6, 8.0)); th = ryd.theta(12.0, 5.0); rd = AQUILA.readout_model()
+    times = np.linspace(0.5, 4.0, 8)
+    t0 = time.time()
+    fit = ryd.fit_mle(ryd.sample(th, times, 200, rng, readout=rd), th * np.array([1.05, 0.93, 1.08]), readout=rd)
+    crb = ryd.cramer_rao(th, times, 200, rd)["relative_std"]
+    err = fit.theta / th - 1
+    say(f"   relative error Ω {100 * err[0]:+.2f} %, Δ {100 * err[1]:+.2f} %, C6 {100 * err[2]:+.2f} %  "
+        f"(Cramér–Rao {100 * crb[0]:.2f}, {100 * crb[1]:.2f}, {100 * crb[2]:.2f} %)  {time.time() - t0:.1f} s")
+    need = ryd.shots_for_precision(th, times, 0.01, rd)["total_shots"]
+    say(f"   shots for 1 % on all three: {need:.0f}; fit warnings: {len(fit.warnings)}")
+    out["rydberg"] = {"relative_error": err.tolist(), "crb": crb.tolist(), "shots_for_1pct": need, "fit_success": fit.success}
     say("=" * 72)
     if as_json:
         print(json.dumps(out, indent=2, default=float))

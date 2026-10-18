@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shadow-hamiltonian-learning"
-version = "0.4.0"
-description = "Classical shadows: randomised, derandomised and matchgate shadows, readout mitigation, Hamiltonian learning with exact gradients, EKF tracking and shadow process tomography"
+version = "0.5.0"
+description = "Classical shadows and Hamiltonian learning: randomised, derandomised and matchgate shadows, readout mitigation, Gibbs-state and Rydberg quench learning with Fisher-information analysis, EKF tracking, shadow process tomography"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -37,3 +37,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+    "slow: Monte Carlo checks that take a few seconds each (deselect with -m \"not slow\")",
+]

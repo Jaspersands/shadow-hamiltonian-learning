@@ -5,6 +5,7 @@ learn            sample Gibbs-state shadows of a random Heisenberg chain and inv
 derand-compare   randomised vs derandomised estimation error at equal shot budget
 qpt              shadow process tomography of a test channel
 track            EKF tracking of a drifting coupling from a snapshot stream
+rydberg          learn (Ω, Δ, C6) of a Rydberg array from simulated Z-basis quench snapshots
 benchmark        the full benchmark suite
 """
 
@@ -25,7 +26,7 @@ from .spam_mitigation import ReadoutErrorModel
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="shadow-learn", description="Classical shadows → Hamiltonian learning, derandomisation, SPAM mitigation, QPT, EKF tracking")
+    parser = argparse.ArgumentParser(prog="shadow-learn", description="Classical shadows, Hamiltonian learning, derandomisation, SPAM mitigation, QPT, EKF tracking, Rydberg quench learning")
     sub = parser.add_subparsers(dest="command")
 
     l = sub.add_parser("learn", help="Gibbs-state shadows → (J, h) inversion")
@@ -56,6 +57,24 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--beta", type=float, default=1.0)
     t.add_argument("--seed", type=int, default=0)
     t.add_argument("--json", action="store_true")
+
+    r = sub.add_parser("rydberg", help="Rydberg (Ω, Δ, C6) from Z-basis quench snapshots")
+    r.add_argument("--atoms", type=int, default=6)
+    r.add_argument("--geometry", choices=["chain", "ring"], default="chain")
+    r.add_argument("--spacing", type=float, default=8.0, help="nearest-neighbour distance in μm")
+    r.add_argument("--omega", type=float, default=12.0, help="Rabi frequency in rad/μs")
+    r.add_argument("--delta", type=float, default=5.0, help="detuning in rad/μs")
+    r.add_argument("--times", type=int, default=8, help="number of probe times, evenly spaced up to --t-max")
+    r.add_argument("--t-max", type=float, default=4.0, help="latest probe time in μs (Aquila on Braket: 4)")
+    r.add_argument("--shots", type=int, default=200, help="shots per probe time")
+    r.add_argument("--jitter", type=float, default=0.0, help="per-shot atom position jitter σ in μm per in-plane coordinate (not modelled by the fit)")
+    r.add_argument("--ramp", type=float, default=0.05, help="Ω ramp at each end of the pulse in μs (0: instantaneous quench, not programmable)")
+    r.add_argument("--no-readout", action="store_true", help="switch off Aquila's readout errors")
+    r.add_argument("--device", choices=["datasheet", "braket"], default="datasheet",
+                   help="Aquila figures: the 2023 datasheet (default) or the current Braket device properties")
+    r.add_argument("--seed", type=int, default=0)
+    r.add_argument("--json", action="store_true")
+    r.add_argument("--quick", action="store_true", help="4 atoms, 4 probe times, 100 shots each")
 
     b = sub.add_parser("benchmark", help="Run the benchmark suite")
     b.add_argument("--json", action="store_true")
@@ -164,6 +183,75 @@ def cmd_track(args) -> int:
     return 0
 
 
+def _finite_or_none(x):
+    """JSON has no infinity: an unreachable shot count is reported as null."""
+    return float(x) if np.isfinite(x) else None
+
+
+def cmd_rydberg(args) -> int:
+    from .rydberg import AQUILA, AQUILA_BRAKET, RydbergQuenchModel, blockade_radius, chain, geometry_violations, ring
+    n, n_times, shots = (4, 4, 100) if args.quick else (args.atoms, args.times, args.shots)
+    specs = AQUILA_BRAKET if args.device == "braket" else AQUILA
+    pos = chain(n, args.spacing) if args.geometry == "chain" else ring(n, args.spacing)
+    model = RydbergQuenchModel(pos, ramp_time=args.ramp)
+    theta = model.theta(args.omega, args.delta)
+    readout = None if args.no_readout else specs.readout_model()
+    times = np.linspace(args.t_max / n_times, args.t_max, n_times)
+    rng = np.random.default_rng(args.seed)
+    data = model.sample(theta, times, shots, rng, readout=readout, position_jitter=args.jitter)
+    start = theta * (1.0 + 0.08 * rng.uniform(-1, 1, size=3))          # nominal values a few per cent off
+    fit = model.fit_mle(data, start, readout=readout)
+    crb = model.cramer_rao(theta, times, shots, readout)
+    need = model.shots_for_precision(theta, times, 0.01, readout)
+    grid = np.arange(max(0.1, 2 * args.ramp), args.t_max + 1e-9, 0.05)
+    best = model.optimal_probe_times(theta, 1, grid, 0.01, readout)
+    flip = float(np.abs(model.probabilities(theta, times, readout) - model.probabilities(theta * np.array([-1, 1, 1]), times, readout)).max())
+    names = ("omega", "delta", "c6")
+    payload = {"geometry": args.geometry, "atoms": n, "spacing_um": args.spacing, "probe_times_us": times, "shots_per_time": shots,
+               "device_figures": args.device, "readout": None if readout is None else [readout.p01, readout.p10],
+               "position_jitter_um": args.jitter, "layout_violations": geometry_violations(pos, specs),
+               "blockade_radius_um": blockade_radius(args.omega, args.delta),
+               "ramp_us": args.ramp, "waveform_violations": model.waveform_violations(theta, times, specs),
+               "true": dict(zip(names, theta.tolist())), "estimate": fit.as_dict(), "std": fit.std,
+               "fit_success": fit.success and not args.jitter, "fit_warnings": fit.warnings, "goodness_of_fit_p": fit.gof_pvalue,
+               "crb_relative_std": dict(zip(names, crb["relative_std"].tolist())),
+               "shots_for_1pct_uniform": _finite_or_none(need["total_shots"]),
+               "best_single_time_us": float(best["times"][0]) if np.isfinite(best["total_shots"]) else None,
+               "shots_for_1pct_best_single_time": _finite_or_none(best["total_shots"]),
+               "max_prob_change_under_omega_sign_flip": flip}
+    unit = {"omega": "rad/μs", "delta": "rad/μs", "c6": "rad μm^6/μs"}
+    lines = [f"[*] {n}-atom {args.geometry}, spacing {args.spacing} μm (blockade radius {payload['blockade_radius_um']:.2f} μm), "
+             f"{n_times} pulses of up to {args.t_max} μs with {args.ramp} μs Ω ramps, {shots} shots each"
+             + ("" if readout is None else f", readout errors {readout.p01:.2f}/{readout.p10:.2f} ({args.device} figures)")
+             + (f", position jitter {args.jitter} μm" if args.jitter else "")]
+    if payload["layout_violations"]:
+        lines.append("    layout outside Aquila's rules: " + "; ".join(payload["layout_violations"]))
+    if payload["waveform_violations"]:
+        lines.append("    pulse outside Aquila's rules: " + "; ".join(payload["waveform_violations"]))
+    for k, nm in enumerate(names):
+        rel = fit.std[nm] / abs(theta[k])
+        lines.append(f"    {nm:5s}: true {theta[k]:.6g}  estimate {fit.theta[k]:.6g} ± {fit.std[nm]:.3g} {unit[nm]}  ({100 * rel:.2f} %, CRB {100 * crb['relative_std'][k]:.2f} %)")
+    lines.append(f"    goodness of fit p = {fit.gof_pvalue:.2f}")
+    for w in fit.warnings:
+        lines.append(f"[!] {w}")
+    if args.jitter:
+        lines.append("[!] the data have position jitter and the fit does not model it: the estimates can be biased by "
+                     "several per cent, depending on the geometry and the pulse, and the goodness-of-fit test need not notice")
+
+    def shots_text(total):
+        return f"{total:.0f}" if np.isfinite(total) else "not reached (the parameters are not all identifiable)"
+    lines.append(f"[+] shots for 1 % on all three with these probe times: {shots_text(need['total_shots'])}")
+    if np.isfinite(best["total_shots"]):
+        lines.append(f"    with all shots at one probe time: {best['total_shots']:.0f}, at t = {best['times'][0]:.2f} μs")
+        lines.append("    (with a single probe time the likelihood has many local maxima, and the optimum is sharp: "
+                     "keep a few early times to anchor the fit)")
+    else:
+        lines.append("    with all shots at one probe time: not identifiable from one probe time")
+    lines.append(f"    flipping the sign of Ω changes no outcome probability by more than {flip:.1e}")
+    _emit(payload, args.json, lines)
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -173,7 +261,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command == "benchmark":
         from .benchmark import run_shadow_benchmark
         return run_shadow_benchmark(as_json=args.json, quick=args.quick)
-    return {"learn": cmd_learn, "derand-compare": cmd_derand, "qpt": cmd_qpt, "track": cmd_track}[args.command](args)
+    return {"learn": cmd_learn, "derand-compare": cmd_derand, "qpt": cmd_qpt, "track": cmd_track,
+            "rydberg": cmd_rydberg}[args.command](args)
 
 
 if __name__ == "__main__":

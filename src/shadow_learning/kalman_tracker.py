@@ -27,12 +27,31 @@ reported standard deviations against the actual error.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 from .cirq_shadows import ShadowSnapshot
 from .differentiable_inversion import DifferentiableHamiltonianLearner
+
+
+def joseph_update(x: np.ndarray, P: np.ndarray, innovation: np.ndarray, H: np.ndarray,
+                  R: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    One linearised Kalman measurement update in Joseph form.
+
+    ``innovation`` is z − h(x), ``H`` the (m, p) Jacobian of h at x and ``R``
+    the (m, m) outcome covariance. Returns the updated state and covariance;
+    the covariance is symmetrised so it stays positive semi-definite in
+    floating point. Shared by :class:`StreamingKalmanHamiltonianTracker` and
+    :class:`shadow_learning.rydberg.RydbergDriftTracker`.
+    """
+    S = H @ P @ H.T + R
+    K = np.linalg.solve(S, H @ P).T                  # P Hᵀ S⁻¹ (S, P symmetric)
+    x_new = x + K @ innovation
+    A = np.eye(len(x)) - K @ H
+    P_new = A @ P @ A.T + K @ R @ K.T
+    return x_new, 0.5 * (P_new + P_new.T)
 
 
 class StreamingKalmanHamiltonianTracker:
@@ -98,12 +117,7 @@ class StreamingKalmanHamiltonianTracker:
             preds, Jac = self.learner.gibbs_observables_and_jacobian(self.x)
             Hm = Jac[idx]                                   # (m, n_params)
             R = self._outcome_covariance(idx, preds)
-            S = Hm @ self.P @ Hm.T + R
-            K = np.linalg.solve(S, Hm @ self.P).T           # P Hᵀ S⁻¹ (S, P symmetric)
-            self.x = self.x + K @ (np.asarray(z) - preds[idx])
-            A = np.eye(self.n_params) - K @ Hm
-            self.P = A @ self.P @ A.T + K @ R @ K.T          # Joseph form
-            self.P = 0.5 * (self.P + self.P.T)
+            self.x, self.P = joseph_update(self.x, self.P, np.asarray(z) - preds[idx], Hm, R)
             self.n_updates += len(idx)
         self._hist.append(self.x.copy())
         return self.estimate()

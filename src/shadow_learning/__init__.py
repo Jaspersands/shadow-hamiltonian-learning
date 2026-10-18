@@ -1,10 +1,11 @@
 """
 shadow_learning
 ===============
-Classical shadows in Cirq/NumPy — randomised and derandomised Pauli shadows,
-matchgate (fermionic) shadows, readout-error mitigation, JAX-differentiable
-Gibbs-state Hamiltonian learning, streaming EKF tracking and shadow process
-tomography.
+Classical shadows in NumPy (Cirq optional): randomised and derandomised Pauli
+shadows, matchgate (fermionic) shadows, readout-error mitigation, Gibbs-state
+Hamiltonian learning with exact gradients, streaming EKF tracking, shadow
+process tomography, and learning a Rydberg Hamiltonian (Ω, Δ, C6) from
+computational-basis snapshots of quench dynamics.
 """
 
 from .cirq_shadows import (
@@ -33,8 +34,18 @@ from .derandomized import DerandomizedShadowSelector, hits_per_observable
 from .kalman_tracker import StreamingKalmanHamiltonianTracker
 from .fermionic_shadows import FermionicMatchgateShadows, MatchgateSnapshot, majorana_operators, slater_state
 from .process_tomography import ShadowProcessTomographer, pauli_transfer_matrix_of_unitary, project_cptp
+from .rydberg import (
+    AQUILA,
+    AQUILA_BRAKET,
+    C6_RB87,
+    DeviceNoise,
+    QuenchData,
+    RydbergDriftTracker,
+    RydbergQuenchModel,
+    blockade_radius,
+)
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = [
     "ClassicalShadowsProtocol", "ShadowSnapshot", "measure_random_pauli_shadows",
     "sample_shadows_from_density_matrix", "sample_shadows_from_state_vector", "gibbs_state", "basis_rotation_matrix",
@@ -46,4 +57,5 @@ __all__ = [
     "StreamingKalmanHamiltonianTracker",
     "FermionicMatchgateShadows", "MatchgateSnapshot", "majorana_operators", "slater_state",
     "ShadowProcessTomographer", "pauli_transfer_matrix_of_unitary",
+    "AQUILA", "AQUILA_BRAKET", "C6_RB87", "DeviceNoise", "QuenchData", "RydbergDriftTracker", "RydbergQuenchModel", "blockade_radius",
 ]

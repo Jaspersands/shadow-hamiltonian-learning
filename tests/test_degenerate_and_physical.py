@@ -134,6 +134,7 @@ def test_choi_and_ptm_round_trip():
 # --------------------------------------------------------------------------- #
 # EKF health
 # --------------------------------------------------------------------------- #
+@pytest.mark.slow
 def test_ekf_covariance_stays_symmetric_psd_and_calibrated():
     J, h = np.array([[0, 0.5], [0.5, 0]]), np.array([0.3, -0.2])
     errs, stds = [], []
@@ -169,6 +170,7 @@ def test_gaussian_covariance_matches_dense_state():
     assert np.allclose(FermionicGaussianState.slater(4, [1, 3]).one_rdm(), fs.exact_1rdm(slater_state(4, [1, 3])))
 
 
+@pytest.mark.slow
 def test_gaussian_and_dense_samplers_estimate_the_same_rdms():
     g = _random_gaussian(4, 2, 1)
     D1, D2 = g.one_rdm(), FermionicMatchgateShadows(4).exact_2rdm(g)
