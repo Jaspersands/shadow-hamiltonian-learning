@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Hamiltonian Learning from Shadows</title>
-<meta name="description" content="Learn the couplings of a spin Hamiltonian from classical shadows of its Gibbs state, in the browser: random and derandomised Pauli shadows, readout-error correction, inversion and Kalman tracking." />
+<meta name="description" content="Learn the couplings of a spin Hamiltonian from classical shadows of its Gibbs state, in the browser: random and derandomised Pauli shadows, readout-error correction, inversion and Kalman tracking. With a summary of learning Ω, Δ and C6 of a Rydberg array from Z-basis quench snapshots." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
@@ -230,6 +230,22 @@ table.data td:first-child { font-family: var(--font-ui); font-size: 13px; }
 .heat-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .heat-title { font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
 .heat .cell { color: var(--text); }
+.part { border-top: 1px solid var(--border); padding: 56px 0 88px; }
+.part .prose { max-width: 700px; }
+.part h2 { font-family: var(--font-serif); font-size: clamp(25px, 2.8vw, 31px); letter-spacing: -0.01em; }
+.part h3 { font-family: var(--font-serif); font-size: 21px; margin-top: 56px; }
+.part p, .part li { font-family: var(--font-serif); font-size: 17px; line-height: 1.65; color: var(--text-2); }
+.part h2 + p, .part h3 + p, .part p + p { margin-top: 14px; }
+.part ol { margin: 16px 0 0; padding-left: 22px; }
+.part li + li { margin-top: 10px; }
+.part .eq { margin: 20px 0; font-family: var(--font-serif); font-size: 17px; color: var(--text); overflow-x: auto; white-space: nowrap; }
+@media (max-width: 559px) { .part .eq { white-space: normal; } }
+.part figure { margin-top: 32px; max-width: 860px; }
+.part figcaption { max-width: 700px; }
+.part .table-wrap { margin-top: 24px; max-width: 700px; overflow-x: auto; }
+.part .table-wrap + p { margin-top: 20px; }
+.part table.data td.sub { color: var(--muted); font-family: var(--font-ui); font-size: 13px; }
+.part table.data th:nth-child(n+3), .part table.data td:nth-child(n+3) { text-align: right; }
 </style>
 </head>
 <body>
@@ -249,6 +265,7 @@ table.data td:first-child { font-family: var(--font-ui); font-size: 13px; }
   <section class="hero">
     <h1>Learning a Hamiltonian from classical shadows</h1>
     <p>A small Heisenberg chain with hidden couplings J<sub>ij</sub> and fields h<sub>i</sub> is prepared at finite temperature. Each measurement records one bitstring in a product Pauli basis. From enough of these snapshots we estimate the local observables, invert the thermal state to recover (J, h), and follow a coupling as it drifts. Choosing the bases deliberately rather than at random, and correcting for asymmetric readout errors, both improve the estimate.</p>
+    <p>The package also learns the Hamiltonian of a Rydberg atom array from computational-basis snapshots of quench dynamics. That part is summarised <a href="#rydberg">below the interactive section</a>, with numbers from the Python package; it is not computed in the browser.</p>
     <p class="check" id="selftest">Running checks…</p>
   </section>
 
@@ -329,6 +346,12 @@ table.data td:first-child { font-family: var(--font-ui); font-size: 13px; }
         </div>
       </div>
 
+      <figure class="panel">
+        <div class="panel-head"><div><div class="panel-title">What thermal data cannot see</div><div class="panel-note">Two-qubit chain H = J σ₀·σ₁ + h₀Z₀ + h₁Z₁ with J = 0.75 and h = (0.2, −0.15). How strongly the measured observables respond to each parameter combination, against inverse temperature.</div></div></div>
+        <div class="chart h-56"><canvas id="idChart" aria-label="Response of the thermal observables to J, h0 minus h1 and h0 plus h1 against inverse temperature"></canvas></div>
+        <figcaption>At low temperature the thermal state is mostly the singlet, with weight 0.96 at β = 1.5. The singlet has total S<sub>z</sub> = 0, so a uniform field leaves it unchanged, and h₀ + h₁ acts only on the thermally suppressed triplet. At β = 1.5 the response to h₀ + h₁ is 0.06, against 1.22 for h₀ − h₁. That ratio of 20 means the same precision on h₀ + h₁ takes about 400 times as many shots. At β = 3 the ratio is about 900. The condition number of the Jacobian is 3.1 at β = 0.3 and 21 at β = 1.5. Values from the Python package, not computed on this page.</figcaption>
+      </figure>
+
       <details class="how">
         <summary>Method</summary>
         <ul>
@@ -342,9 +365,60 @@ table.data td:first-child { font-family: var(--font-ui); font-size: 13px; }
       </details>
     </section>
   </div>
+
+  <section class="part" id="rydberg">
+    <div class="prose">
+      <h2>Learning a Rydberg Hamiltonian from snapshots</h2>
+      <p>The second part of the package learns Ω, Δ and C6 of a Rydberg atom array from computational-basis snapshots of quench dynamics, one bitstring per shot after a single pulse. That is the only readout an analog neutral-atom device such as QuEra's Aquila provides. The model is</p>
+      <p class="eq">H/ħ = (Ω(t)/2) Σ<sub>i</sub> X<sub>i</sub> − Δ Σ<sub>i</sub> n<sub>i</sub> + Σ<sub>i&lt;j</sub> C6 / |r<sub>i</sub> − r<sub>j</sub>|⁶ · n<sub>i</sub>n<sub>j</sub>,</p>
+      <p>with n = |r⟩⟨r|, Ω and Δ in rad/μs, positions in μm and times in μs. Each shot prepares |g…g⟩, applies one pulse of duration T in which Ω rises linearly over 0.05 μs, stays flat and falls back to 0, with Δ constant and the phase zero, and reads every atom out in the computational basis.</p>
+      <p>The numbers in this section come from the Python package, not from this page. Unless stated otherwise they are for six atoms in a chain at 8 μm, Ω = 12 rad/μs and Δ = 5 rad/μs (blockade radius 8.64 μm), eight pulses with durations evenly spaced from 0.5 to 4 μs, and the readout errors of the 2023 Aquila paper: a ground-state atom is read as Rydberg with probability 0.01, and a Rydberg atom is read as ground with probability 0.08.</p>
+
+      <h3>Five changes no Z-basis data can detect</h3>
+      <p>Starting from every atom in the ground state, each of these leaves every outcome probability exactly unchanged, so no amount of data fixes it.</p>
+      <ol>
+        <li>The drive phase. Conjugating by Π<sub>i</sub> exp(−iφ n<sub>i</sub>) fixes the initial state and the measurement. For a real drive this is the sign of Ω.</li>
+        <li>The signs of Δ and C6 together. H is a real matrix at every moment of the pulse, so H and −H give the same probabilities. Combined with the first symmetry, this flips Δ and C6 at fixed Ω. The sign of Δ is defined only relative to the sign of the interaction.</li>
+        <li>Rates and durations. Multiplying Ω, Δ and C6 by a and dividing every duration, ramps included, by a changes nothing. The data fix rates times durations, so the absolute values rest on the device clock.</li>
+        <li>C6 and the array's length scale. Only C6/s⁶ enters, so calibrating C6 and calibrating the atom positions are one measurement.</li>
+        <li>Δ and the mean offset. With per-site offsets δ<sub>i</sub>, only Δ + δ<sub>i</sub> enters, so Δ and the mean offset are one parameter.</li>
+      </ol>
+      <p>For the Ω flip the largest change in any outcome probability is exactly 0; for the sign pair and the length scale it is below 5 × 10⁻¹⁵. Flipping Δ alone changes some probabilities by 0.38. Within what remains, the least well determined combination is mostly Δ with some C6: in relative units (Ω, Δ, C6) ≈ (−0.07, 0.97, 0.22), and the Δ–C6 correlation is 0.75.</p>
+
+      <h3>The blockade limit</h3>
+      <p>Deep inside the blockade radius, states with two neighbouring excitations are never populated, and C6 drops out of the data. For two atoms closer than 5.5 μm, 1 % on C6 takes between about 10⁷ and 10¹² shots. Between 6.5 and 10 μm the pair needs 3,500 to 25,000 shots. From 11 μm on, the pair loses C6 again when Ω and Δ are fitted alongside it (2.2 million shots at 11 μm), because a weak interaction and a small change of Δ act almost alike; with Ω and Δ known, C6 alone needs 2,900 shots there. A six-atom chain keeps C6 visible through next-nearest neighbours, at twice the spacing. It needs at most 9,000 shots anywhere between 4 and 11 μm, with the worst point at 6 μm, and fewer than 1,300 between 6.5 and 10 μm.</p>
+    </div>
+    <figure>
+      <div class="chart h-64"><canvas id="spacingChart" aria-label="Shots for 1 percent on C6 against atom spacing, for two atoms and for a six-atom chain"></canvas></div>
+      <figcaption>Cramér–Rao shots for a relative standard deviation of 1 % on C6 against atom spacing, with eight probe times and Aquila's readout errors. Solid lines: Ω and Δ fitted alongside C6. Dashed lines: C6 alone. The pair's dip near 9.0 μm is the resonance V = 2Δ, where |rr⟩ is degenerate with |gg⟩.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h3>Maximum likelihood against the Cramér–Rao bound</h3>
+      <p>Relative RMSE of the maximum-likelihood fit on the full bitstring distribution over 200 seeded trials, with starting points up to 8 % from the truth. With 200 trials the RMSE values have about 5 % sampling error.</p>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>shots per time (total)</th><th></th><th>Ω</th><th>Δ</th><th>C6</th></tr></thead>
+          <tbody>
+            <tr><td>50 (400)</td><td class="sub">Cramér–Rao bound</td><td>0.34 %</td><td>1.95 %</td><td>0.57 %</td></tr>
+            <tr><td></td><td class="sub">maximum likelihood</td><td>0.35 %</td><td>1.90 %</td><td>0.51 %</td></tr>
+            <tr><td>200 (1,600)</td><td class="sub">Cramér–Rao bound</td><td>0.17 %</td><td>0.98 %</td><td>0.28 %</td></tr>
+            <tr><td></td><td class="sub">maximum likelihood</td><td>0.16 %</td><td>0.95 %</td><td>0.29 %</td></tr>
+            <tr><td>800 (6,400)</td><td class="sub">Cramér–Rao bound</td><td>0.09 %</td><td>0.49 %</td><td>0.14 %</td></tr>
+            <tr><td></td><td class="sub">maximum likelihood</td><td>0.09 %</td><td>0.48 %</td><td>0.13 %</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Across the three budgets the likelihood RMSE is 0.89 to 1.04 times the bound. The largest departure, 0.89 for C6 at 50 shots per time, is about two standard errors. Least squares on the readout-corrected ⟨n<sub>i</sub>⟩ and ⟨n<sub>i</sub>n<sub>j</sub>⟩ uses only about half of the information in the bitstrings and needs roughly twice the shots for the same error.</p>
+      <p>With the eight evenly spaced pulses, 1 % on all three parameters takes 1,528 shots with the 2023 paper's readout errors and 2,350 with the current Braket figures. Putting 80 % of the shots at 3.65 μs and 5 % at each of four earlier times brings this to 535. With shot-to-shot drive noise and a relaxation model, the evenly spaced count becomes roughly 3,700 to 9,700 shots with the paper's figures and 7,100 to 13,900 with Braket's; the relaxation model is the least certain part.</p>
+
+      <h3>Limitations</h3>
+      <p>All of these results are on simulated data; nothing here has been fitted to device data. The simulation is an exact state vector, and fitting and Fisher information stop at 10 atoms, while Aquila arrays have up to 256. One pulse shape is modelled, and spatial inhomogeneity, the systematic detuning offset and Doppler shifts are not. The fitters do not model position jitter: at σ = 0.2 μm the fit on the reference chain lands at +0.28 % in Ω, −1.36 % in Δ and −0.61 % in C6, so calibrating to 1 % needs the jitter in the model. At small spacings neighbouring maxima along C6 fit almost equally well, and the reported errors are then too small.</p>
+    </div>
+  </section>
 </main>
 
-<footer class="site-footer"><div class="wrap"><span>shadow-hamiltonian-learning 0.4 · Jasper Sands · Apache-2.0</span><span>Python: NumPy, SciPy, optional Cirq and JAX. This page: plain JavaScript and Chart.js.</span></div></footer>
+<footer class="site-footer"><div class="wrap"><span>shadow-hamiltonian-learning 0.5 · Jasper Sands · Apache-2.0</span><span>Python: NumPy, SciPy, optional Cirq and JAX. This page: plain JavaScript and Chart.js.</span></div></footer>
 
 <script id="engine">
 /* ---------------------------------------------------------------------------
@@ -795,6 +869,39 @@ async function ekf() {
   btn.disabled = false; btn.textContent = 'Track a drifting coupling';
   return e;
 }
+// ---------------------------------------------------------------- static figures (values from figures/findings.json, package 0.5.0)
+// Sensitivity of the thermal observables to J, h0 - h1 and h0 + h1 (findings.heisenberg).
+const THERMAL_ID = {
+  beta: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0],
+  coupling: [0.198, 0.434, 0.685, 0.918, 1.10, 1.22, 1.26, 1.23, 1.15, 1.05, 0.930, 0.816, 0.714, 0.629, 0.563, 0.514, 0.479, 0.455, 0.440, 0.431, 0.425, 0.422, 0.420, 0.418, 0.418, 0.417, 0.417, 0.417, 0.417, 0.417],
+  staggered: [0.107, 0.227, 0.355, 0.486, 0.614, 0.732, 0.837, 0.927, 1.00, 1.06, 1.11, 1.15, 1.18, 1.20, 1.22, 1.23, 1.24, 1.24, 1.25, 1.25, 1.26, 1.26, 1.26, 1.26, 1.26, 1.26, 1.26, 1.26, 1.26, 1.26],
+  uniform: [0.0919, 0.166, 0.219, 0.252, 0.265, 0.262, 0.247, 0.223, 0.196, 0.168, 0.141, 0.117, 0.0953, 0.0769, 0.0615, 0.0489, 0.0386, 0.0303, 0.0238, 0.0185, 0.0144, 0.0112, 0.00865, 0.00668, 0.00515, 0.00396, 0.00304, 0.00234, 0.00179, 0.00137],
+};
+// Cramér–Rao shots for 1 % on C6 against spacing in μm (findings.spacing_scan_shots_for_1pct_c6), three significant figures.
+const RYD_SCAN = {
+  spacing: Array.from({ length: 41 }, (_, i) => 4 + 0.25 * i),   // 4.0, 4.25, …, 14.0
+  pair: [7.21e9, 7.05e6, 2.76e10, 5.68e11, 8.35e8, 1.68e9, 6.79e6, 2.01e6, 1.42e5, 29300, 3530, 4330, 6190, 9450, 13600, 17900, 11900, 9800, 6770, 3790, 6170, 3900, 8220, 15900, 24600, 42800, 1.21e5, 4.57e5, 2.23e6, 6.62e6, 1.14e7, 1.15e7, 1e7, 9e6, 8.8e6, 1.02e7, 1.48e7, 1.5e7, 1.24e7, 1.14e7, 1.11e7],
+  pairAlone: [1.19e7, 3.23e6, 3.08e6, 1.7e6, 9.84e5, 6.05e5, 3.78e5, 2.54e5, 88800, 23800, 1210, 569, 244, 219, 141, 85, 173, 176, 689, 885, 5530, 1810, 2760, 1860, 3280, 2260, 2330, 3480, 2880, 2630, 3150, 4020, 5330, 7340, 10800, 17700, 30200, 44400, 54400, 62400, 71600],
+  chain: [117, 279, 313, 495, 967, 2000, 2780, 6130, 8970, 2670, 538, 149, 117, 65.1, 66.3, 84.8, 129, 174, 190, 238, 346, 760, 1250, 854, 1060, 1660, 2470, 2830, 4010, 5700, 8890, 11600, 13800, 14600, 16700, 19700, 24600, 32400, 41000, 48800, 59100],
+  chainAlone: [51, 117, 181, 157, 364, 1110, 1350, 4170, 5570, 2580, 538, 145, 105, 53.7, 34.7, 29.1, 41.2, 34, 34.4, 56, 78.3, 283, 603, 773, 929, 950, 955, 814, 981, 1200, 1260, 1730, 1810, 1830, 1910, 2040, 2290, 2750, 3400, 4260, 5640],
+};
+const xy = (xs, ys) => xs.map((x, i) => ({ x, y: ys[i] }));
+const shotsLabel = y => y < 1e5 ? Math.round(y).toLocaleString('en') : Q.fmt.sci(y, 1);
+new Chart($('idChart'), { type: 'line', data: { datasets: [
+  { label: 'J', data: xy(THERMAL_ID.beta, THERMAL_ID.coupling), borderColor: C('--muted'), borderDash: [4, 3] },
+  { label: 'h₀ − h₁', data: xy(THERMAL_ID.beta, THERMAL_ID.staggered), borderColor: C('--muted-2') },
+  { label: 'h₀ + h₁', data: xy(THERMAL_ID.beta, THERMAL_ID.uniform), borderColor: C('--accent') }] },
+  options: { scales: { x: Q.axis('inverse temperature β', { type: 'linear', min: 0, max: 3 }), y: Q.axis('response', { type: 'logarithmic', min: 1e-3, max: 2 }) },
+    plugins: { tooltip: { callbacks: { title: it => `β = ${it[0].parsed.x.toFixed(1)}`, label: it => `${it.dataset.label}: ${it.parsed.y.toPrecision(3)}` } } } } });
+new Chart($('spacingChart'), { type: 'line', data: { datasets: [
+  { label: 'six-atom chain', data: xy(RYD_SCAN.spacing, RYD_SCAN.chain), borderColor: C('--accent') },
+  { label: 'six-atom chain, C6 alone', data: xy(RYD_SCAN.spacing, RYD_SCAN.chainAlone), borderColor: Q.alpha('--accent', 0.6), borderDash: [4, 3], borderWidth: 1.25 },
+  { label: 'two atoms', data: xy(RYD_SCAN.spacing, RYD_SCAN.pair), borderColor: C('--muted') },
+  { label: 'two atoms, C6 alone', data: xy(RYD_SCAN.spacing, RYD_SCAN.pairAlone), borderColor: C('--muted-2'), borderDash: [4, 3], borderWidth: 1.25 }] },
+  options: { interaction: { mode: 'index', intersect: false },
+    scales: { x: Q.axis('atom spacing (μm)', { type: 'linear', min: 4, max: 14 }), y: Q.axis('shots for 1 % on C6', { type: 'logarithmic', min: 10, max: 1e12 }) },
+    plugins: { tooltip: { callbacks: { title: it => `${it[0].parsed.x} μm`, label: it => `${it.dataset.label}: ${shotsLabel(it.parsed.y)}` } } } } });
+
 window.__shadow = { S, invertStudy, budgetStudy, ekfStudy };
 ['N', 'beta', 'seed', 'shots', 'p01', 'p10'].forEach(id => $(id).addEventListener('input', read));
 ['N', 'beta', 'seed'].forEach(id => $(id).addEventListener('change', buildModel));
