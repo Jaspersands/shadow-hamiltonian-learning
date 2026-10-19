@@ -1,0 +1,185 @@
+{
+  "experiment": {
+    "atoms": 6,
+    "geometry": "chain",
+    "spacing_um": 8.0,
+    "omega_rad_per_us": 12.0,
+    "delta_rad_per_us": 5.0,
+    "c6_reference_rad_um6_per_us": 5420441.132650757,
+    "ramp_us": 0.05,
+    "probe_times_us": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
+    "fit": ["omega", "delta", "c6"]
+  },
+  "device_arn": "arn:aws:braket:us-east-1::device/qpu/quera/Aquila",
+  "region": "us-east-1",
+  "shot_choice": {
+    "shots_per_program": 200,
+    "target_relative_std_c6": 0.01,
+    "expected_kept_fraction": 0.9529498212436541,
+    "shots_per_time_needed_before_postselection": 161.32684002939007,
+    "floor": 200,
+    "step": 50,
+    "models": {
+      "braket readout only": {
+        "relative_std_one_shot_per_time": {
+          "omega": 0.030243880320182746,
+          "delta": 0.17138474054445046,
+          "c6": 0.050631113906570484
+        },
+        "shots_per_time_for_target_c6": 25.63509695420115,
+        "predicted_relative_std_at_chosen_shots": {
+          "omega": 0.002190723144657823,
+          "delta": 0.012414297166139392,
+          "c6": 0.0036674775822635015
+        }
+      },
+      "braket readout, drive noise": {
+        "relative_std_one_shot_per_time": {
+          "omega": 0.034829615586000326,
+          "delta": 0.18636948973732723,
+          "c6": 0.05513522768913611
+        },
+        "shots_per_time_for_target_c6": 30.398933323328812,
+        "predicted_relative_std_at_chosen_shots": {
+          "omega": 0.002522892042158587,
+          "delta": 0.013499721275949167,
+          "c6": 0.0039937342069154
+        }
+      },
+      "braket readout, drive noise, relaxation at T2 echo (7 us)": {
+        "relative_std_one_shot_per_time": {
+          "omega": 0.07757355345540043,
+          "delta": 0.41642064245637006,
+          "c6": 0.12399047679874889
+        },
+        "shots_per_time_for_target_c6": 153.73638336781084,
+        "predicted_relative_std_at_chosen_shots": {
+          "omega": 0.005619060026986302,
+          "delta": 0.03016353489316207,
+          "c6": 0.00898128164655218
+        }
+      }
+    }
+  },
+  "cost_estimate": {
+    "tasks": 8,
+    "shots_per_task": 200,
+    "total_shots": 1600,
+    "task_fees_usd": 2.4,
+    "shot_fees_usd": 16.0,
+    "total_usd": 18.4,
+    "price_per_task_usd": 0.3,
+    "price_per_shot_usd": 0.01,
+    "pricing_source": "https://aws.amazon.com/braket/pricing/",
+    "pricing_checked": "2026-10-19"
+  },
+  "checked_with_sdk": true,
+  "paradigm_file": "aquila_paradigm_documented.json",
+  "programs": [
+    {
+      "file": "program_00_T0.500us.json",
+      "probe_time_us": 0.5,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_01_T1.000us.json",
+      "probe_time_us": 1.0,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_02_T1.500us.json",
+      "probe_time_us": 1.5,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_03_T2.000us.json",
+      "probe_time_us": 2.0,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_04_T2.500us.json",
+      "probe_time_us": 2.5,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_05_T3.000us.json",
+      "probe_time_us": 3.0,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_06_T3.500us.json",
+      "probe_time_us": 3.5,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    },
+    {
+      "file": "program_07_T4.000us.json",
+      "probe_time_us": 4.0,
+      "shots": 200,
+      "checks": {
+        "package": {
+          "datasheet 2023": [],
+          "braket": []
+        },
+        "documented_capabilities": [],
+        "sdk": []
+      }
+    }
+  ],
+  "all_checks_passed": true
+}

@@ -1,0 +1,197 @@
+{
+ "labels": {
+  "source": "Braket LocalSimulator('braket_ahs'), amazon-braket-sdk 1.127.3.post0",
+  "truth": "Omega = 12.0 rad/us, Delta = 5.0 rad/us, C6 = 5.42e+06 rad um^6/us (simulator constant)"
+ },
+ "parameters": {
+  "omega": {
+   "estimate": 12.005649105160796,
+   "cramer_rao_std": 0.014631023109638486,
+   "relative_cramer_rao_std": 0.0012186782223502714,
+   "bootstrap_std": 0.014133867049553257,
+   "bootstrap_interval_68": [
+    11.989451622301873,
+    12.017799254816818
+   ],
+   "truth": 12.0,
+   "relative_error": 0.00047075876339963685,
+   "z": 0.3861045887538909
+  },
+  "delta": {
+   "estimate": 5.010524913330034,
+   "cramer_rao_std": 0.034818495848270715,
+   "relative_cramer_rao_std": 0.006949071494613141,
+   "bootstrap_std": 0.030000813386419155,
+   "bootstrap_interval_68": [
+    4.98374400611381,
+    5.042669258990026
+   ],
+   "truth": 5.0,
+   "relative_error": 0.0021049826660068938,
+   "z": 0.3022793797842003
+  },
+  "c6": {
+   "estimate": 5424483.2920785565,
+   "cramer_rao_std": 11071.189808396992,
+   "relative_cramer_rao_std": 0.002040966708214291,
+   "bootstrap_std": 10735.6698082333,
+   "bootstrap_interval_68": [
+    5416871.021370864,
+    5436857.672814352
+   ],
+   "truth": 5420000.0,
+   "relative_error": 0.0008271756602502567,
+   "z": 0.40495124337549704
+  }
+ },
+ "c6_comparison": {
+  "reference": 5420441.132650757,
+  "reference_note": "2 pi x 862690 rad um^6/us (shadow_learning.C6_RB87)",
+  "ratio_minus_one": 0.0007457251778735241,
+  "z_statistical": 0.365106144665092
+ },
+ "goodness_of_fit": {
+  "chi2": 174.5428933803002,
+  "dof": 165,
+  "p_value": 0.29045499464228175
+ },
+ "fit_success": true,
+ "warnings": [],
+ "alternatives": [],
+ "restarts": [
+  {
+   "start": [
+    12.0,
+    5.0,
+    5420441.132650757
+   ],
+   "theta": [
+    12.005649105160796,
+    5.010524913330034,
+    5424483.2920785565
+   ],
+   "neg_log_likelihood": 5844.761402149219,
+   "success": true
+  },
+  {
+   "start": [
+    12.36,
+    6.0,
+    5420441.132650757
+   ],
+   "theta": [
+    12.005649101462467,
+    5.0105249230346,
+    5424483.291811524
+   ],
+   "neg_log_likelihood": 5844.761402149218,
+   "success": true
+  },
+  {
+   "start": [
+    11.64,
+    4.0,
+    5420441.132650757
+   ],
+   "theta": [
+    12.00564910514458,
+    5.010524913414142,
+    5424483.292111703
+   ],
+   "neg_log_likelihood": 5844.761402149222,
+   "success": true
+  }
+ ],
+ "n_bootstrap": 200,
+ "readout": null,
+ "noise": null,
+ "data": {
+  "probe_times_us": [
+   0.5,
+   1.0,
+   1.5,
+   2.0,
+   2.5,
+   3.0,
+   3.5,
+   4.0
+  ],
+  "shots_returned": [
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200
+  ],
+  "shots_success": [
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200
+  ],
+  "shots_kept": [
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200,
+   200
+  ],
+  "task_ids": [
+   "rydberg",
+   "rydberg",
+   "rydberg",
+   "rydberg",
+   "rydberg",
+   "rydberg",
+   "rydberg",
+   "rydberg"
+  ],
+  "programmed": {
+   "omega": 12.0,
+   "delta": 5.0
+  }
+ },
+ "predicted_relative_std_at_estimate": {
+  "omega": 0.0012186782223502707,
+  "delta": 0.0069490714946131345,
+  "c6": 0.00204096670821429
+ },
+ "repeats": {
+  "n": 20,
+  "mean_relative_error": [
+   -6.498049776781922e-05,
+   0.000700803389375837,
+   -6.422823820151358e-05
+  ],
+  "rms_relative_error": [
+   0.0010545473160158522,
+   0.006432962746741407,
+   0.0018806233655966995
+  ],
+  "mean_relative_cramer_rao": [
+   0.0012229069959384807,
+   0.006989135903255643,
+   0.00204406294031748
+  ],
+  "mean_z2": [
+   0.7411284634902905,
+   0.8494437947202489,
+   0.8469675882245472
+  ],
+  "fraction_within_2sigma": [
+   1.0,
+   0.9,
+   1.0
+  ]
+ }
+}

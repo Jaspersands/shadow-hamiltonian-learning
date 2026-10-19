@@ -5,3 +5,5 @@ __pycache__/
 dist/
 build/
 .DS_Store
+.venv-braket/
+experiments/aquila/tasks.json.tmp
